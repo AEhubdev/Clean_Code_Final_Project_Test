@@ -120,48 +120,55 @@ with col_charts:
     render_window("WINDOW 2: VOLUME", "volume", "v1")
     render_window("WINDOW 3: RSI", "rsi", "r1")
     render_window("WINDOW 4: MACD", "macd", "m1")
-
 with col_sidebar:
     st.markdown("### 🚦 Signal Center")
     latest = df_base.iloc[-1]
 
-    # 1. Main Action (Your existing logic)
+    # Main Action Label
     status, color = trading_logic.evaluate_status(latest)
-    styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
-
+    styles.display_signal("ACTION", status, "LIVE", color)
     st.divider()
 
-    # 2. RSI & MACD Metrics
-    r_val = latest['RSI']
-    rsi_state = "Overbought" if r_val > 70 else "Oversold" if r_val < 30 else "Neutral"
-    st.markdown(f"**RSI (14):** `{r_val:.1f}` ({rsi_state})")
+    # RSI & MACD Block
+    rsi_val = latest['RSI']
+    rsi_status = "Overbought" if rsi_val > 70 else "Oversold" if rsi_val < 30 else "Neutral"
+    rsi_color = "red" if rsi_val > 70 else "green" if rsi_val < 30 else "gray"
 
-    m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
-    m_col = "green" if m_dir == "UP" else "red"
-    st.markdown(f"**MACD Direction:** :{m_col}[{m_dir}]")
+    macd_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
+    macd_color = "green" if macd_dir == "UP" else "red"
 
-    # 3. Stochastic Oscillator (Ctochastik)
+    # Use columns for compact metric display
+    c1, c2 = st.columns(2)
+    c1.markdown(f"**RSI (14)**")
+    c1.markdown(f":{rsi_color}-badge[{rsi_val:.1f} {rsi_status}]")
+
+    c2.markdown(f"**MACD**")
+    c2.markdown(f":{macd_color}-badge[{macd_dir}]")
+
+    # Stochastic (Ctochastik) Block
+    st.markdown("---")
     sk, sd = latest['Stoch_K'], latest['Stoch_D']
-    s_cross = "Bullish" if sk > sd else "Bearish"
-    s_col = "green" if sk > sd else "red"
-    st.markdown(f"**Stochastic (K/D):** `{sk:.0f}` / `{sd:.0f}` (:{s_col}[{s_cross}])")
+    stoch_status = "Bullish Cross" if sk > sd else "Bearish Cross"
+    stoch_color = "green" if sk > sd else "red"
 
-    st.divider()
+    st.markdown(f"**Stoch (K/D):** `{sk:.0f}` / `{sd:.0f}`")
+    st.markdown(f":{stoch_color}[{stoch_status}]")
 
-    # 4. Trend Strength (ADX)
-    adx_val = latest['ADX']
-    if adx_val > 50:
+    # Trend Strength (ADX) Block
+    st.markdown("---")
+    adx = latest['ADX']
+    if adx > 50:
         t_str, t_col = "EXTREME", "orange"
-    elif adx_val > 25:
+    elif adx > 25:
         t_str, t_col = "STRONG", "green"
-    elif adx_val > 20:
+    elif adx > 20:
         t_str, t_col = "DEVELOPING", "yellow"
     else:
         t_str, t_col = "WEAK/RANGING", "gray"
 
     st.markdown(f"**Trend Strength:** :{t_col}[{t_str}]")
-    st.progress(min(adx_val / 100, 1.0))
-    st.caption(f"ADX Value: {adx_val:.1f} (25+ = Trending)")
+    st.progress(min(adx / 100, 1.0))
+    st.caption(f"ADX Value: {adx:.1f} (25+ indicates a reliable trend)")
 
     st.divider()
     st.markdown("### Market News")
