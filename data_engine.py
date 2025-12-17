@@ -7,29 +7,34 @@ import config
 
 @st.cache_data(ttl=60)
 def fetch_market_data():
-    # Download data
-    df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
+    # Use Ticker.history for a cleaner, single-index dataframe
+    ticker = yf.Ticker(config.TICKER_SYMBOL)
+    df = ticker.history(start=config.DATA_START_DATE, interval="1d")
 
-    # Flatten MultiIndex if necessary
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+    if df.empty:
+        st.error("No data found. Check ticker symbol.")
+        return pd.DataFrame(), []
 
-    # CRITICAL: Ensure we use the most recent price data
+    # Ensure column names are standard
+    df.columns = [c.capitalize() for c in df.columns]
     df = df.ffill().dropna()
 
-    # Technical Indicators
+    # --- INDICATORS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
 
+    # Bollinger Bands
     std = df['Close'].rolling(window=20).std()
     df['BB_U'] = df['MA20'] + (std * 2)
     df['BB_L'] = df['MA20'] - (std * 2)
 
+    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
 
+    # MACD
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = ema12 - ema26
@@ -37,7 +42,7 @@ def fetch_market_data():
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
     try:
-        news = yf.Search(config.ASSET_NAME, news_count=8).news
+        news = ticker.news
     except:
         news = []
 
