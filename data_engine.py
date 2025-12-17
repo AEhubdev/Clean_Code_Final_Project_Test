@@ -40,19 +40,31 @@ def fetch_market_data(interval_code):
     else:
         period = "max"
 
-    try:
-        df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False, progress=False)
+    def fetch_market_data(interval_code):
+        # ... (period selection logic) ...
+        try:
+            df = yf.download(
+                config.TICKER,
+                period=period,
+                interval=interval_code,
+                auto_adjust=False,
+                progress=False,
+                multi_level_index=False  # Force single-level columns
+            )
 
-        if df is None or df.empty:
+            if df.empty:
+                return pd.DataFrame()
+
+            # Rule S2.40: Safety check for remaining MultiIndex
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+
+            # Ensure column names are clean strings
+            df.columns = [str(col) for col in df.columns]
+
+            return df.ffill().dropna()
+        except Exception:
             return pd.DataFrame()
-
-        # Handle yfinance MultiIndex columns (Rule S2.40)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        return df.ffill().dropna()
-    except Exception:
-        return pd.DataFrame()
 
 
 def apply_technical_indicators(df):
