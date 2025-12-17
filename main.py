@@ -8,19 +8,26 @@ st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
 styles.apply_custom_css()
 
 if 'step' not in st.session_state:
-    st.session_state.step = config.INITIAL_STEP
+    st.session_state.step = 100
+    st.session_state.trades = []
 
 df_full, news_list = data_engine.fetch_market_data()
 
-# Simulation point logic
+# Simulation step
 if st.session_state.step >= len(df_full):
-    st.session_state.step = config.INITIAL_STEP
+    st.session_state.step = 100
 
 current_row = df_full.iloc[st.session_state.step]
 price, w_perc, m_perc, vol_val = data_engine.get_metrics_at_point(st.session_state.step, df_full)
 
-# --- 1. TOP METRICS (Updating every 2 mins) ---
-st.title(f"🏆 {config.ASSET_NAME} Market Overview")
+# Record Signals automatically
+status, color = trading_logic.evaluate_signal(current_row)
+if status != "NEUTRAL":
+    if not st.session_state.trades or st.session_state.trades[-1]['Time'] != current_row.name:
+        st.session_state.trades.append({"Time": current_row.name, "Price": price, "Action": status})
+
+# --- UI LAYOUT ---
+st.title(f"🏆 {config.ASSET_NAME} Advanced Terminal")
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Live Price", f"${price:,.2f}")
 styles.colored_metric(c2, "Weekly Change", f"{w_perc:+.2f}%", w_perc)
@@ -28,62 +35,62 @@ styles.colored_metric(c3, "Monthly Change", f"{m_perc:+.2f}%", m_perc)
 styles.colored_metric(c4, "Volatility", f"{vol_val:.2f}%", vol_val, is_vol=True)
 st.divider()
 
-col_charts, col_signals = st.columns([0.7, 0.3])
+col_charts, col_signals = st.columns([0.75, 0.25])
 
 with col_charts:
-    # --- PRICE CHART ---
-    st.markdown('<div class="window-header">MARKET TREND & INDICATORS</div>', unsafe_allow_html=True)
+    # 1. PRICE & BOLLINGER BANDS & MAs
+    st.markdown('<div class="window-header">MARKET TREND & VOLATILITY BANDS</div>', unsafe_allow_html=True)
     fig1 = go.Figure()
     fig1.add_trace(go.Candlestick(x=df_full.index, open=df_full['Open'], high=df_full['High'], low=df_full['Low'],
-                                  close=df_full['Close'], name="Price"))
+                                  close=df_full['Close'], name="Candlestick"))
+
+    # MA Lines
     fig1.add_trace(go.Scatter(x=df_full.index, y=df_full['MA20'], name="MA20", line=dict(color='#FFEB3B', width=1)))
-    fig1.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="#FFD700")  # THE "LIVE" MARKER
-    fig1.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False, margin=dict(t=0, b=0))
+    fig1.add_trace(go.Scatter(x=df_full.index, y=df_full['MA50'], name="MA50", line=dict(color='#E91E63', width=1)))
+
+    # Bollinger Bands
+    fig1.add_trace(go.Scatter(x=df_full.index, y=df_full['BB_U'], name="BB Upper",
+                              line=dict(color='rgba(173, 216, 230, 0.3)', dash='dash')))
+    fig1.add_trace(go.Scatter(x=df_full.index, y=df_full['BB_L'], name="BB Lower",
+                              line=dict(color='rgba(173, 216, 230, 0.3)', dash='dash'), fill='tonexty'))
+
+    # Trading Signal Markers
+    if st.session_state.trades:
+        tdf = pd.DataFrame(st.session_state.trades)
+        fig1.add_trace(go.Scatter(x=tdf['Time'], y=tdf['Price'], mode='markers',
+                                  marker=dict(symbol='diamond', size=10, color='white'), name="Algo Signal"))
+
+    fig1.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="#FFD700")
+    fig1.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, margin=dict(t=0, b=0))
     st.plotly_chart(fig1, use_container_width=True)
 
-    # --- VOLUME CHART ---
-    st.markdown('<div class="window-header">TRADING VOLUME</div>', unsafe_allow_html=True)
-    v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(df_full['Close'], df_full['Open'])]
-    fig2 = go.Figure(go.Bar(x=df_full.index, y=df_full['Volume'], marker_color=v_colors))
-    fig2.update_layout(template="plotly_dark", height=150, margin=dict(t=0, b=0))
+    # 2. RSI & MACD Combined Window
+    st.markdown('<div class="window-header">MOMENTUM & STRENGTH INDICATORS</div>', unsafe_allow_html=True)
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter(x=df_full.index, y=df_full['RSI'], name="RSI", line=dict(color='#BB86FC')))
+    fig2.add_trace(go.Scatter(x=df_full.index, y=df_full['MACD'], name="MACD", line=dict(color='#00E5FF')))
+    fig2.add_hline(y=70, line_dash="dash", line_color="red")
+    fig2.add_hline(y=30, line_dash="dash", line_color="green")
+    fig2.update_layout(template="plotly_dark", height=300, margin=dict(t=0, b=0))
     st.plotly_chart(fig2, use_container_width=True)
 
-    # --- RSI CHART ---
-    st.markdown('<div class="window-header">RELATIVE STRENGTH (RSI)</div>', unsafe_allow_html=True)
-    fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(x=df_full.index, y=df_full['RSI'], line=dict(color='#BB86FC')))
-    fig3.add_hline(y=70, line_dash="dash", line_color="red")
-    fig3.add_hline(y=30, line_dash="dash", line_color="green")
-    fig3.update_layout(template="plotly_dark", height=150, margin=dict(t=0, b=0), yaxis=dict(range=[0, 100]))
-    st.plotly_chart(fig3, use_container_width=True)
-
-    # --- MACD CHART ---
-    st.markdown('<div class="window-header">MACD MOMENTUM</div>', unsafe_allow_html=True)
-    fig4 = go.Figure()
-    fig4.add_trace(go.Scatter(x=df_full.index, y=df_full['MACD'], name="MACD", line=dict(color='#00E5FF')))
-    fig4.add_trace(go.Scatter(x=df_full.index, y=df_full['MACD_Signal'], name="Signal", line=dict(color='#FFCA28')))
-    fig4.update_layout(template="plotly_dark", height=150, margin=dict(t=0, b=0))
-    st.plotly_chart(fig4, use_container_width=True)
-
     # Headlines
-    st.markdown('<div class="window-header">📰 LATEST HEADLINES</div>', unsafe_allow_html=True)
+    st.markdown('<div class="window-header">📰 NEWS FEED</div>', unsafe_allow_html=True)
     for n in news_list[:5]:
         styles.render_news_item(n)
 
 with col_signals:
-    st.markdown('<div class="sidebar-header">SIGNAL CENTER</div>', unsafe_allow_html=True)
-    status, color = trading_logic.evaluate_signal(current_row)
-
-    # These cards update based on the "Live Marker"
+    st.markdown('<div class="sidebar-header">📡 LIVE SIGNALS</div>', unsafe_allow_html=True)
     styles.display_signal("ALGO RECOMMENDATION", status, "LIVE", color)
     styles.display_signal("RSI (14)", f"{current_row['RSI']:.1f}", "ACTIVE", "#BB86FC")
-    styles.display_signal("MACD", f"{current_row['MACD']:.2f}", "TRENDING", "#00E5FF")
+    styles.display_signal("MACD", f"{current_row['MACD']:.2f}", "STABLE", "#00E5FF")
 
-    # Extra Data for the sidebar
-    st.write(f"**Simulation Date:** {current_row.name.date()}")
-    st.write(f"**Next Update:** {config.REFRESH_RATE} seconds")
+    # Trade Log Sidebar
+    st.markdown("**Executed Signals Log**")
+    if st.session_state.trades:
+        st.dataframe(pd.DataFrame(st.session_state.trades).tail(5), use_container_width=True)
 
-# Logic loop
+# Loop
 time.sleep(config.REFRESH_RATE)
 st.session_state.step += 1
 st.rerun()
