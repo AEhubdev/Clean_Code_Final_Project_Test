@@ -33,9 +33,13 @@ def get_gold_data():
     df['STOCH_K'] = (df['Close'] - df['Low'].rolling(14).min()) * 100 / (
                 df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10)
 
-    # --- SIGNAL LOGIC FOR CHART ---
-    df['Buy_Signal'] = (df['RSI'] < 35)
-    df['Sell_Signal'] = (df['RSI'] > 65)
+
+    # --- IMPROVED SIGNAL LOGIC ---
+    # Buy only if RSI is low AND MACD histogram starts turning green
+    df['Buy_Signal'] = (df['RSI'] < 35) & (df['MACD_Hist'] > df['MACD_Hist'].shift(1))
+
+    # Sell only if RSI is high AND MACD histogram starts turning red (showing exhaustion)
+    df['Sell_Signal'] = (df['RSI'] > 65) & (df['MACD_Hist'] < df['MACD_Hist'].shift(1))
 
     try:
         search = yf.Search("Gold Market", news_count=8)
