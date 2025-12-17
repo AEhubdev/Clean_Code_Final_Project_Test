@@ -90,7 +90,8 @@ def render_window(title, chart_type, key_id, default_idx=2):
         # (Assuming your candlestick and indicator traces are here)
 
         fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        # We use key_id (e.g., "p1", "v1") to ensure every chart has a unique ID in the DOM
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{key_id}")
 
 
 render_live_overview()
