@@ -3,90 +3,114 @@ import plotly.graph_objects as go
 import numpy as np
 import data_engine, trading_logic, styles, config
 
+# 1. SETUP & STYLES (Rule S2.43: Imports and config on top)
 st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
 styles.apply_custom_styles()
 
 
-def calculate_trend(y):
-    x = np.arange(len(y))
-    n = len(x)
-    m = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (n * np.sum(x ** 2) - (np.sum(x) ** 2))
-    b = (np.sum(y) - m * np.sum(x)) / n
-    return m * x + b
+def calculate_least_squares_trend(prices):
+    """Calculates a linear trend line using the least squares method."""
+    x_axis = np.arange(len(prices))
+    n_points = len(x_axis)
+
+    # Formula components for m (slope) and b (intercept)
+    sum_x = np.sum(x_axis)
+    sum_y = np.sum(prices)
+    sum_xy = np.sum(x_axis * prices)
+    sum_xx = np.sum(x_axis ** 2)
+
+    slope = (n_points * sum_xy - sum_x * sum_y) / (n_points * sum_xx - sum_x ** 2)
+    intercept = (sum_y - slope * sum_x) / n_points
+
+    return slope * x_axis + intercept
 
 
-# Unpack YTD start price
-df_base, price_now, news_list, ytd_start_price = data_engine.get_gold_data("1 Day")
-metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start_price)
+# 2. DATA ORCHESTRATION (Rule C4: Human-readable flow)
+df_base, price_now, news_list, ytd_start_price = data_engine.get_gold_terminal_data("1 Day")
+metrics = data_engine.calculate_market_metrics(price_now, df_base, ytd_start_price)
 
+# 3. HEADER METRICS
 st.title("🏆 Gold Multi-Timeframe Terminal")
 cols = st.columns(5)
 cols[0].metric("Live Gold", f"${price_now:,.2f}")
-styles.colored_metric(cols[1], "Weekly", f"{metrics[0]:+.2f}%", metrics[0])
-styles.colored_metric(cols[2], "Monthly", f"{metrics[1]:+.2f}%", metrics[1])
-styles.colored_metric(cols[3], "YTD", f"{metrics[2]:+.2f}%", metrics[2])  # Added YTD
-styles.colored_metric(cols[4], "Volatility", f"{metrics[3]:.2f}%", metrics[3], is_vol=True)
+
+# Using Dictionary Keys (Rule C1: Precise Names) instead of index numbers
+styles.colored_metric(cols[1], "Weekly", f"{metrics['weekly']:+.2f}%", metrics['weekly'])
+styles.colored_metric(cols[2], "Monthly", f"{metrics['monthly']:+.2f}%", metrics['monthly'])
+styles.colored_metric(cols[3], "YTD", f"{metrics['ytd']:+.2f}%", metrics['ytd'])
+styles.colored_metric(cols[4], "Volatility", f"{metrics['volatility']:.2f}%", metrics['volatility'], is_volatility=True)
+
 st.divider()
 
+# 4. LAYOUT DIVISION
 col_charts, col_sidebar = st.columns([0.72, 0.28])
 
 
 @st.fragment(run_every="15m")
-def render_window(title, chart_type, key_id):
+def render_chart_window(title, chart_type, unique_key):
+    """Renders modular chart containers for different technical indicators."""
     with st.container(border=True):
-        h_col, s_col = st.columns([0.7, 0.3])
-        if chart_type == "price":
-            h_col.markdown(f"**{title}** <br> <span style='font-size:11px; color:gray;'>"
-                           "<span style='color:#00d4ff'>● MA20</span> | "
-                           "<span style='color:#ffea00'>● MA50</span> | "
-                           "<span style='color:orange'>-- Trend</span></span>", unsafe_allow_html=True)
-        else:
-            h_col.markdown(f"**{title}**")
+        header_col, selector_col = st.columns([0.7, 0.3])
 
-        tf = s_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()), index=2, key=key_id,
-                             label_visibility="collapsed")
-        data, _, _, _ = data_engine.get_gold_data(tf)
-        if data.empty: return st.warning("Data load error.")
+        # Header display logic
+        if chart_type == "price":
+            header_col.markdown(f"**{title}** <br> <span style='font-size:11px; color:gray;'>"
+                                "<span style='color:#00d4ff'>● MA20</span> | "
+                                "<span style='color:#ffea00'>● MA50</span> | "
+                                "<span style='color:orange'>-- Trend</span></span>", unsafe_allow_html=True)
+        else:
+            header_col.markdown(f"**{title}**")
+
+        timeframe = selector_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()),
+                                           index=2, key=unique_key, label_visibility="collapsed")
+
+        # Fetch data for specific timeframe
+        data, _, _, _ = data_engine.get_gold_terminal_data(timeframe)
+        if data.empty:
+            return st.warning("Data load error.")
 
         fig = go.Figure()
+
+        # Chart Logic Switch (Rule C2.17: Avoiding Convoluted Logic)
         if chart_type == "price":
+            # Bollinger Bands & MAs
             fig.add_trace(
-                go.Scatter(x=data.index, y=data['BB_U'], line=dict(color='rgba(173, 216, 230, 0.15)', width=1),
-                           name="BB Upper"))
+                go.Scatter(x=data.index, y=data['BB_Upper'], line=dict(color='rgba(173, 216, 230, 0.15)', width=1),
+                           name="BB Up"))
             fig.add_trace(
-                go.Scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(173, 216, 230, 0.15)', width=1),
-                           fill='tonexty', fillcolor='rgba(173, 216, 230, 0.05)', name="BB Lower"))
+                go.Scatter(x=data.index, y=data['BB_Lower'], line=dict(color='rgba(173, 216, 230, 0.15)', width=1),
+                           fill='tonexty', name="BB Low"))
             fig.add_trace(go.Scatter(x=data.index, y=data['MA20'], line=dict(color='#00d4ff', width=1.5), name="MA20"))
             fig.add_trace(go.Scatter(x=data.index, y=data['MA50'], line=dict(color='#ffea00', width=1.5), name="MA50"))
+
+            # Main Candlesticks
             fig.add_trace(
                 go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
                                name="Price"))
-            trend_vals = calculate_trend(data['Close'].values)
-            fig.add_trace(go.Scatter(x=data.index, y=trend_vals, name="Trend Line",
-                                     line=dict(color='orange', width=2, dash='dot')))
 
-            buys = data[data['Buy_Signal']];
+            # Trend Line
+            trend_line = calculate_least_squares_trend(data['Close'].values)
+            fig.add_trace(
+                go.Scatter(x=data.index, y=trend_line, name="Trend", line=dict(color='orange', width=2, dash='dot')))
+
+            # Signals (Using Refactored Names)
+            buys = data[data['Buy_Signal']]
             sells = data[data['Sell_Signal']]
             fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.998, mode='markers',
-                                     marker=dict(symbol='triangle-up', size=12, color='#00FF41'), name="Buy Signal"))
+                                     marker=dict(symbol='triangle-up', size=12, color='#00FF41'), name="Buy"))
             fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.002, mode='markers',
-                                     marker=dict(symbol='triangle-down', size=12, color='#FF3131'), name="Sell Signal"))
-            fig.update_layout(showlegend=True,
-                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                                          font=dict(size=10)), height=400, xaxis_rangeslider_visible=False)
+                                     marker=dict(symbol='triangle-down', size=12, color='#FF3131'), name="Sell"))
+            fig.update_layout(height=400, xaxis_rangeslider_visible=False)
 
-        elif chart_type == "volume":
-            v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(data['Close'], data['Open'])]
-            fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors))
-            fig.update_layout(height=180)
         elif chart_type == "rsi":
             fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC')))
-            fig.add_hline(y=70, line_color="red", line_dash="dash");
-            fig.add_hline(y=30, line_color="green", line_dash="dash")
+            fig.add_hline(y=config.RSI_OVERBOUGHT, line_color="red", line_dash="dash")
+            fig.add_hline(y=config.RSI_OVERSOLD, line_color="green", line_dash="dash")
             fig.update_layout(height=180, yaxis=dict(range=[0, 100]))
+
         elif chart_type == "macd":
-            m_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
-            fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors))
+            macd_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
+            fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=macd_colors))
             fig.update_layout(height=180)
 
         fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5))
@@ -94,42 +118,51 @@ def render_window(title, chart_type, key_id):
 
 
 with col_charts:
-    render_window("PRICE ACTION", "price", "p1")
-    render_window("VOLUME", "volume", "v1")
-    render_window("RSI", "rsi", "r1")
-    render_window("MACD", "macd", "m1")
+    render_chart_window("PRICE ACTION", "price", "p1")
+    render_chart_window("RSI", "rsi", "r1")
+    render_chart_window("MACD", "macd", "m1")
 
+# 5. SIDEBAR SIGNALS (Rule C2.22: Natural Conditions)
 with col_sidebar:
     st.markdown("### 🚦 Signal Center")
-    latest = df_base.iloc[-1]
+    latest_bar = df_base.iloc[-1]
 
-    status, color = trading_logic.evaluate_status(latest)
-    styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
+    # Evaluate Status (Clean Logic)
+    status, status_color = trading_logic.evaluate_market_status(latest_bar)
+    styles.display_signal("PRIMARY ACTION", status, "LIVE", status_color)
+
     st.markdown("---")
 
+    # Technical Gauges
     c1, c2 = st.columns(2)
-    r_val = latest['RSI']
-    r_color = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
-    c1.markdown(
-        f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_color}"><small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
-        unsafe_allow_html=True)
+    current_rsi = latest_bar['RSI']
+    rsi_display_color = "red" if current_rsi > config.RSI_OVERBOUGHT else "green" if current_rsi < config.RSI_OVERSOLD else "#00d4ff"
 
-    m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
-    m_color = "green" if m_dir == "UP" else "red"
-    c2.markdown(
-        f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}"><small style="color:gray">MACD</small><br><strong style="font-size:18px; color:{m_color}">{m_dir}</strong></div>',
-        unsafe_allow_html=True)
+    c1.markdown(f"""
+        <div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {rsi_display_color}">
+            <small style="color:gray">RSI (14)</small><br>
+            <strong style="font-size:18px">{current_rsi:.1f}</strong>
+        </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    sk, sd = latest['Stoch_K'], latest['Stoch_D']
-    s_col = "green" if sk > sd else "red"
-    st.markdown(
-        f'<div style="background:#1e2130; padding:12px; border-radius:5px;"><div style="display:flex; justify-content:space-between"><span style="color:gray">Stoch (K/D)</span><span style="color:{s_col}; font-weight:bold">{"Bullish" if sk > sd else "Bearish"}</span></div><div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div></div>',
-        unsafe_allow_html=True)
+    # Stochastic Display
+    stoch_k, stoch_d = latest_bar['Stoch_K'], latest_bar['Stoch_D']
+    is_bullish_stoch = stoch_k > stoch_d
+    stoch_color = "green" if is_bullish_stoch else "red"
 
-
+    st.markdown(f"""
+        <div style="background:#1e2130; padding:12px; border-radius:5px; margin-top:10px;">
+            <div style="display:flex; justify-content:space-between">
+                <span style="color:gray">Stoch (K/D)</span>
+                <span style="color:{stoch_color}; font-weight:bold">
+                    {"Bullish" if is_bullish_stoch else "Bearish"}
+                </span>
+            </div>
+            <div style="font-size:20px; font-weight:bold">{stoch_k:.0f} / {stoch_d:.0f}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
     st.divider()
     st.markdown("### Market News")
-    for n in news_list[:5]:
-        st.markdown(f"● [{n['title']}]({n['link']})")
+    for news_item in news_list[:5]:
+        st.markdown(f"● [{news_item['title']}]({news_item['link']})")
