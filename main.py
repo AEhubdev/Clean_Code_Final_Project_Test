@@ -1,63 +1,47 @@
 import streamlit as st
 import pandas as pd
-import time
 import plotly.graph_objects as go
-import config, data_engine
+import data_engine, config, time
 
-st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
+st.set_page_config(page_title="Gold Terminal 2025", layout="wide")
 
-# Fetch fresh data
-df_full, news_list = data_engine.fetch_market_data()
+# Fetch corrected data
+df = data_engine.fetch_market_data()
+price, change, vol = data_engine.get_live_metrics(df)
 
-# Anchor to the VERY LAST ROW (Live Price)
-if 'step' not in st.session_state:
-    st.session_state.step = len(df_full) - 1
-    st.session_state.trades = []
-
-current_row = df_full.iloc[st.session_state.step]
-price, w_perc, vol_val = data_engine.get_metrics(st.session_state.step, df_full)
-
-# UI HEADER
-st.title(f"🏆 {config.ASSET_NAME} LIVE TERMINAL")
-st.write(f"**Current Trading Date:** {current_row.name.strftime('%B %d, %Y')}")
+# --- DASHBOARD HEADER ---
+st.title("🏆 Gold Market Intelligence")
+st.subheader(f"Live Terminal: {df.index[-1].strftime('%B %d, %Y')}")
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Current Price", f"${price:,.2f}")
-c2.metric("Weekly Change", f"{w_perc:+.2f}%")
-c3.metric("Volatility", f"{vol_val:.2f}%")
+c1.metric("Live Market Price", f"${price:,.2f}")
+c2.metric("Change since Dec 2024", f"{change:+.2f}%")
+c3.metric("Annualized Volatility", f"{vol:.2f}%")
 
-# --- GRAPHS ---
-# Main Price & Trades
-st.markdown("### 📈 PRICE ACTION & MOVING AVERAGES")
-fig_p = go.Figure()
-fig_p.add_trace(go.Candlestick(x=df_full.index, open=df_full['Open'], high=df_full['High'],
-                               low=df_full['Low'], close=df_full['Close'], name="Price"))
-fig_p.add_trace(go.Scatter(x=df_full.index, y=df_full['MA20'], name="MA20", line=dict(color='yellow')))
-fig_p.add_trace(go.Scatter(x=df_full.index, y=df_full['MA50'], name="MA50", line=dict(color='red')))
-fig_p.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False)
-st.plotly_chart(fig_p, use_container_width=True)
+# --- CHART 1: PRICE & MA ---
+st.markdown("### 📈 Price Action ($4,300+ Range)")
+fig1 = go.Figure()
+fig1.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Gold"))
+fig1.add_trace(go.Scatter(x=df.index, y=df['MA50'], line=dict(color='orange', width=2), name="MA50"))
+fig1.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False)
+st.plotly_chart(fig1, use_container_width=True)
 
-# MACD Window
-st.markdown("### 🚀 MACD MOMENTUM (With Signal Line)")
-fig_m = go.Figure()
-fig_m.add_trace(go.Bar(x=df_full.index, y=df_full['MACD_Hist'], name="Hist", marker_color='white'))
-fig_m.add_trace(go.Scatter(x=df_full.index, y=df_full['MACD'], name="MACD", line=dict(color='cyan')))
-fig_m.add_trace(go.Scatter(x=df_full.index, y=df_full['MACD_Signal'], name="Signal", line=dict(color='orange', dash='dot')))
-fig_m.update_layout(template="plotly_dark", height=200)
-st.plotly_chart(fig_m, use_container_width=True)
+# --- CHART 2: MACD MOMENTUM ---
+st.markdown("### 🚀 MACD Signal & Histogram")
+fig2 = go.Figure()
+fig2.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name="Hist", marker_color='gray'))
+fig2.add_trace(go.Scatter(x=df.index, y=df['MACD'], name="MACD", line=dict(color='cyan')))
+fig2.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name="Signal", line=dict(color='gold', dash='dot')))
+fig2.update_layout(template="plotly_dark", height=200)
+st.plotly_chart(fig2, use_container_width=True)
 
-# RSI Window
-st.markdown("### 📉 RSI OSCILLATOR")
-fig_r = go.Figure(go.Scatter(x=df_full.index, y=df_full['RSI'], line=dict(color='purple')))
-fig_r.add_hline(y=70, line_dash="dash", line_color="red")
-fig_r.add_hline(y=30, line_dash="dash", line_color="green")
-fig_r.update_layout(template="plotly_dark", height=150, yaxis=dict(range=[0, 100]))
-st.plotly_chart(fig_r, use_container_width=True)
+# --- CHART 3: RSI OSCILLATOR ---
+st.markdown("### 📉 RSI Oscillator")
+fig3 = go.Figure(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='magenta')))
+fig3.add_hline(y=70, line_color="red", line_dash="dash")
+fig3.add_hline(y=30, line_color="green", line_dash="dash")
+fig3.update_layout(template="plotly_dark", height=150, yaxis=dict(range=[0, 100]))
+st.plotly_chart(fig3, use_container_width=True)
 
-# NEWS SECTION
-st.markdown("### 📰 LATEST HEADLINES")
-for n in news_list:
-    st.markdown(f"**[{n['title']}]({n['link']})**")
-
-time.sleep(config.REFRESH_RATE)
+time.sleep(30)
 st.rerun()
