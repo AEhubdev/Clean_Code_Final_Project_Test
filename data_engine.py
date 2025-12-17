@@ -6,10 +6,10 @@ import streamlit as st
 
 @st.cache_data(ttl=60)
 def fetch_market_data():
-    # Force auto_adjust=False for $4,300+ price. Start Dec 2024.
+    # Force auto_adjust=False for correct price ($4300+). Start Dec 2024.
     df = yf.download("GC=F", start="2024-12-01", auto_adjust=False)
 
-    # 2025 Header Fix
+    # 2025 Multi-Index Fix
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
@@ -31,3 +31,10 @@ def fetch_market_data():
     df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
 
     return df.dropna()
+
+
+def get_signal(row):
+    if row['RSI'] < 30: return "STRONG BUY", "#00FF41"
+    if row['RSI'] > 70: return "STRONG SELL", "#FF3131"
+    if row['MACD_Hist'] > 0: return "BULLISH", "#00E5FF"
+    return "NEUTRAL", "gray"
