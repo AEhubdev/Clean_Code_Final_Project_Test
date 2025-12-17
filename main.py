@@ -43,10 +43,13 @@ def render_live_overview():
 
     with col_sidebar:
         st.markdown("### 🚦 Signal Center")
+
+        # Use the 1-day data for the primary signal logic
         latest = df_base.iloc[-1]
         status, color = trading_logic.evaluate_status(latest)
+
+        # This function handles the HTML rendering itself
         styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
-        st.markdown("---")
 
         c1, c2 = st.columns(2)
         r_val = latest['RSI']
