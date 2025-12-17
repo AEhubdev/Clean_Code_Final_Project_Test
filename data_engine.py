@@ -42,7 +42,7 @@ def get_gold_data(interval_name="1 Day"):
     df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
     df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
 
-    # --- TREND STRENGTH (ADX) ---
+    # --- TREND STRENGTH (ADX) --
     # Directional Movement
     df['UpM'] = df['High'].diff()
     df['DoM'] = -df['Low'].diff()
