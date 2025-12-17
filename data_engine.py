@@ -8,20 +8,29 @@ from datetime import datetime
 
 @st.cache_data(ttl=600)
 def get_gold_data(interval_name="1 Day"):
+    # Map the readable names to yfinance codes
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
 
-    # We pull more data than needed to ensure Moving Averages (MA50) have enough points to calculate
-    period = "60d" if interval_code in ["15m", "1h"] else "2y"
+    # DYNAMIC DATA EXPANSION:
+    # If using Intraday (15m, 1h), 60 days is plenty.
+    # If using Daily, Weekly, or Monthly, we pull 'max' to fill the chart properly.
+    if interval_code in ["15m", "1h"]:
+        period = "60d"
+    else:
+        period = "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
+
     if df.empty: return pd.DataFrame(), 0.0, [], 0.0
 
+    # Flatten MultiIndex (Critical for yfinance v0.2.x+)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # --- INDICATORS ---
+    # --- CALCULATE INDICATORS ON THE FULL DATASET ---
+    # This ensures indicators have values even if we only show a small slice later
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     df['StdDev'] = df['Close'].rolling(window=20).std()
@@ -51,7 +60,7 @@ def get_gold_data(interval_name="1 Day"):
     df['Buy_Signal'] = buy_cond & ~buy_cond.shift(1).fillna(False)
     df['Sell_Signal'] = sell_cond & ~sell_cond.shift(1).fillna(False)
 
-    # --- YTD PRICE ---
+    # --- YTD START PRICE ---
     try:
         y_start = f"{datetime.now().year}-01-01"
         ytd_data = yf.download(config.TICKER, start=y_start, progress=False)

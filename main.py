@@ -15,6 +15,7 @@ def calculate_trend(y):
 
 @st.fragment(run_every="1m")
 def render_live_overview():
+    # Primary data for metrics (Daily context)
     df_base, price_now, news_list, ytd_start = data_engine.get_gold_data("1 Day")
     metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start)
 
@@ -76,8 +77,11 @@ def render_window(title, chart_type, key_id, default_idx=2):
                              label_visibility="collapsed")
 
         full_df, _, _, _ = data_engine.get_gold_data(tf)
-        # Slicing: Only show the last 60 periods so the chart is readable
-        data = full_df.tail(60)
+
+        # DYNAMIC SLICING: Expand view based on timeframe
+        # Monthly needs more bars to look good; 15m needs fewer to stay clear.
+        lookback = 100 if tf in ["15m", "1h"] else 250
+        data = full_df.tail(lookback)
 
         if data.empty: return st.warning("Data load error.")
 
@@ -94,11 +98,15 @@ def render_window(title, chart_type, key_id, default_idx=2):
             fig.add_trace(go.Scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
                                      fill='tonexty', name="BB Low"))
 
-            trend = calculate_trend(data['Close'].values)
-            fig.add_trace(
-                go.Scatter(x=data.index, y=trend, line=dict(color='orange', width=2, dash='dot'), name="Trend"))
+            # Trend calculation
+            try:
+                trend = calculate_trend(data['Close'].values)
+                fig.add_trace(
+                    go.Scatter(x=data.index, y=trend, line=dict(color='orange', width=2, dash='dot'), name="Trend"))
+            except:
+                pass
 
-            # Signals
+            # Buy/Sell Signals
             buys = data[data['Buy_Signal']]
             sells = data[data['Sell_Signal']]
             fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.99, mode='markers',
@@ -124,7 +132,7 @@ def render_window(title, chart_type, key_id, default_idx=2):
             fig.update_layout(height=180)
 
         fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True, key=f"plot_{key_id}_{chart_type}")
+        st.plotly_chart(fig, use_container_width=True, key=f"plot_{key_id}_{chart_type}_{tf}")
 
 
 render_live_overview()
