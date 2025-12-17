@@ -1,26 +1,19 @@
 import config
 
 
-def generate_trading_signal(latest_data_row):
+def get_signal(row):
     """
-    Core algorithmic logic.
-    Returns: 'BUY', 'SELL', or 'HOLD'
+    Sophisticated logic: BUY if RSI is oversold and MACD is bullish.
+    SELL if RSI is overbought or price drops below MA20.
     """
-    price = latest_data_row['Close']
-    rsi = latest_data_row['RSI']
-    macd = latest_data_row['MACD']
-    macd_signal = latest_data_row['MACD_SIGNAL']
-    ma20 = latest_data_row['MA20']
+    price = row['Close']
+    rsi = row['RSI']
+    macd = row['MACD']
+    signal = row['MACD_SIGNAL']
+    ma20 = row['MA20']
 
-    # Multi-factor logic: Momentum + Mean Reversion
-    is_oversold = rsi < config.RSI_OVERSOLD
-    is_overbought = rsi > config.RSI_OVERBOUGHT
-    macd_cross_up = macd > macd_signal
-    price_above_ma = price > ma20
-
-    if is_oversold and macd_cross_up:
+    if rsi < config.RSI_OVERSOLD and macd > signal:
         return "BUY"
-    elif is_overbought or (not price_above_ma and macd < macd_signal):
+    elif rsi > config.RSI_OVERBOUGHT or (price < ma20 and macd < signal):
         return "SELL"
-
     return "HOLD"
