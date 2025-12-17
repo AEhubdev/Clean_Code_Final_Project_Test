@@ -1,47 +1,50 @@
 import streamlit as st
-import pandas as pd
 import plotly.graph_objects as go
 import data_engine, config, time
 
 st.set_page_config(page_title="Gold Terminal 2025", layout="wide")
 
-# Fetch corrected data
+# Get clean data
 df = data_engine.fetch_market_data()
-price, change, vol = data_engine.get_live_metrics(df)
+latest_price = float(df['Close'].iloc[-1])
 
-# --- DASHBOARD HEADER ---
-st.title("🏆 Gold Market Intelligence")
-st.subheader(f"Live Terminal: {df.index[-1].strftime('%B %d, %Y')}")
+# Header Metrics
+st.title(f"🏆 {config.ASSET_NAME} Advanced Terminal")
+st.subheader(f"Current Date: {df.index[-1].strftime('%Y-%m-%d')}")
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Live Market Price", f"${price:,.2f}")
-c2.metric("Change since Dec 2024", f"{change:+.2f}%")
-c3.metric("Annualized Volatility", f"{vol:.2f}%")
+col_m1, col_m2 = st.columns(2)
+col_m1.metric("Live Market Price", f"${latest_price:,.2f}")
+col_m2.metric("RSI (14D)", f"{df['RSI'].iloc[-1]:.2f}")
 
-# --- CHART 1: PRICE & MA ---
-st.markdown("### 📈 Price Action ($4,300+ Range)")
-fig1 = go.Figure()
-fig1.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Gold"))
-fig1.add_trace(go.Scatter(x=df.index, y=df['MA50'], line=dict(color='orange', width=2), name="MA50"))
-fig1.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False)
-st.plotly_chart(fig1, use_container_width=True)
+# --- PANEL 1: PRICE & CANDLESTICKS ---
+st.markdown("#### 📈 Price Action & Moving Averages")
+fig_p = go.Figure()
+fig_p.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Gold"))
+fig_p.add_trace(go.Scatter(x=df.index, y=df['MA20'], name="MA20", line=dict(color='rgba(255, 255, 0, 0.7)')))
+fig_p.add_trace(go.Scatter(x=df.index, y=df['MA50'], name="MA50", line=dict(color='rgba(255, 0, 0, 0.7)')))
+fig_p.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, margin=dict(t=30, b=0))
+st.plotly_chart(fig_p, use_container_width=True)
 
-# --- CHART 2: MACD MOMENTUM ---
-st.markdown("### 🚀 MACD Signal & Histogram")
-fig2 = go.Figure()
-fig2.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name="Hist", marker_color='gray'))
-fig2.add_trace(go.Scatter(x=df.index, y=df['MACD'], name="MACD", line=dict(color='cyan')))
-fig2.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name="Signal", line=dict(color='gold', dash='dot')))
-fig2.update_layout(template="plotly_dark", height=200)
-st.plotly_chart(fig2, use_container_width=True)
+# --- PANEL 2: MACD WINDOW ---
+st.markdown("#### 🚀 MACD Momentum")
+fig_m = go.Figure()
+# Histogram
+colors = ['green' if x >= 0 else 'red' for x in df['MACD_Hist']]
+fig_m.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name="Histogram", marker_color=colors))
+# MACD & Signal Lines
+fig_m.add_trace(go.Scatter(x=df.index, y=df['MACD'], name="MACD", line=dict(color='cyan', width=2)))
+fig_m.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name="Signal", line=dict(color='orange', dash='dot')))
+fig_m.update_layout(template="plotly_dark", height=250, margin=dict(t=0, b=0))
+st.plotly_chart(fig_m, use_container_width=True)
 
-# --- CHART 3: RSI OSCILLATOR ---
-st.markdown("### 📉 RSI Oscillator")
-fig3 = go.Figure(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='magenta')))
-fig3.add_hline(y=70, line_color="red", line_dash="dash")
-fig3.add_hline(y=30, line_color="green", line_dash="dash")
-fig3.update_layout(template="plotly_dark", height=150, yaxis=dict(range=[0, 100]))
-st.plotly_chart(fig3, use_container_width=True)
+# --- PANEL 3: RSI WINDOW ---
+st.markdown("#### 📉 RSI Oscillator")
+fig_r = go.Figure()
+fig_r.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='magenta', width=2)))
+fig_r.add_hline(y=70, line_dash="dash", line_color="red")
+fig_r.add_hline(y=30, line_dash="dash", line_color="green")
+fig_r.update_layout(template="plotly_dark", height=180, yaxis=dict(range=[0, 100]), margin=dict(t=0, b=0))
+st.plotly_chart(fig_r, use_container_width=True)
 
-time.sleep(30)
+time.sleep(config.REFRESH_RATE)
 st.rerun()
