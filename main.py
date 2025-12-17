@@ -120,55 +120,63 @@ with col_charts:
     render_window("WINDOW 2: VOLUME", "volume", "v1")
     render_window("WINDOW 3: RSI", "rsi", "r1")
     render_window("WINDOW 4: MACD", "macd", "m1")
+
 with col_sidebar:
     st.markdown("### 🚦 Signal Center")
     latest = df_base.iloc[-1]
 
-    # Main Action Label
+    # 1. Main Action Card
     status, color = trading_logic.evaluate_status(latest)
-    styles.display_signal("ACTION", status, "LIVE", color)
-    st.divider()
+    styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
 
-    # RSI & MACD Block
-    rsi_val = latest['RSI']
-    rsi_status = "Overbought" if rsi_val > 70 else "Oversold" if rsi_val < 30 else "Neutral"
-    rsi_color = "red" if rsi_val > 70 else "green" if rsi_val < 30 else "gray"
+    st.markdown("---")
 
-    macd_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
-    macd_color = "green" if macd_dir == "UP" else "red"
-
-    # Use columns for compact metric display
+    # 2. RSI & MACD Indicator Grid
     c1, c2 = st.columns(2)
-    c1.markdown(f"**RSI (14)**")
-    c1.markdown(f":{rsi_color}-badge[{rsi_val:.1f} {rsi_status}]")
 
-    c2.markdown(f"**MACD**")
-    c2.markdown(f":{macd_color}-badge[{macd_dir}]")
+    # RSI Card
+    r_val = latest['RSI']
+    r_color = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
+    c1.markdown(f"""
+        <div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_color}">
+            <small style="color:gray">RSI (14)</small><br>
+            <strong style="font-size:18px">{r_val:.1f}</strong>
+        </div>
+    """, unsafe_allow_html=True)
 
-    # Stochastic (Ctochastik) Block
-    st.markdown("---")
+    # MACD Card
+    m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
+    m_color = "green" if m_dir == "UP" else "red"
+    c2.markdown(f"""
+        <div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}">
+            <small style="color:gray">MACD</small><br>
+            <strong style="font-size:18px; color:{m_color}">{m_dir}</strong>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 3. Stochastic Oscillator (Ctochastik)
+    st.markdown("<br>", unsafe_allow_html=True)
     sk, sd = latest['Stoch_K'], latest['Stoch_D']
-    stoch_status = "Bullish Cross" if sk > sd else "Bearish Cross"
-    stoch_color = "green" if sk > sd else "red"
+    s_col = "green" if sk > sd else "red"
+    st.markdown(f"""
+        <div style="background:#1e2130; padding:12px; border-radius:5px;">
+            <div style="display:flex; justify-content:space-between">
+                <span style="color:gray">Stoch (K/D)</span>
+                <span style="color:{s_col}; font-weight:bold">{'Bullish' if sk > sd else 'Bearish'}</span>
+            </div>
+            <div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown(f"**Stoch (K/D):** `{sk:.0f}` / `{sd:.0f}`")
-    st.markdown(f":{stoch_color}[{stoch_status}]")
+    # 4. Trend Strength (ADX)
+    st.markdown("<br>", unsafe_allow_html=True)
+    adx_val = latest['ADX']
+    t_str = "EXTREME" if adx_val > 50 else "STRONG" if adx_val > 25 else "WEAK"
+    t_col = "orange" if adx_val > 50 else "green" if adx_val > 25 else "gray"
 
-    # Trend Strength (ADX) Block
-    st.markdown("---")
-    adx = latest['ADX']
-    if adx > 50:
-        t_str, t_col = "EXTREME", "orange"
-    elif adx > 25:
-        t_str, t_col = "STRONG", "green"
-    elif adx > 20:
-        t_str, t_col = "DEVELOPING", "yellow"
-    else:
-        t_str, t_col = "WEAK/RANGING", "gray"
-
-    st.markdown(f"**Trend Strength:** :{t_col}[{t_str}]")
-    st.progress(min(adx / 100, 1.0))
-    st.caption(f"ADX Value: {adx:.1f} (25+ indicates a reliable trend)")
+    st.markdown(f"**Trend Strength:** <span style='color:{t_col}'>{t_str}</span>", unsafe_allow_html=True)
+    st.progress(min(adx_val / 100, 1.0))
+    st.caption(f"ADX: {adx_val:.1f} (Reliable above 25)")
 
     st.divider()
     st.markdown("### Market News")

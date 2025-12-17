@@ -43,24 +43,22 @@ def get_gold_data(interval_name="1 Day"):
     df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
 
     # --- TREND STRENGTH (ADX) ---
-    # Calculate True Range (TR)
-    tr1 = df['High'] - df['Low']
-    tr2 = abs(df['High'] - df['Close'].shift(1))
-    tr3 = abs(df['Low'] - df['Close'].shift(1))
-    df['TR'] = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
     # Directional Movement
     df['UpM'] = df['High'].diff()
     df['DoM'] = -df['Low'].diff()
     df['Plus_DM'] = np.where((df['UpM'] > df['DoM']) & (df['UpM'] > 0), df['UpM'], 0)
     df['Minus_DM'] = np.where((df['DoM'] > df['UpM']) & (df['DoM'] > 0), df['DoM'], 0)
 
-    # Apply smoothing (alpha = 1/period)
+    # Wilder's Smoothing for ATR
     alpha = 1 / 14
+    tr1 = df['High'] - df['Low']
+    tr2 = abs(df['High'] - df['Close'].shift(1))
+    tr3 = abs(df['Low'] - df['Close'].shift(1))
+    df['TR'] = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     df['ATR'] = df['TR'].ewm(alpha=alpha, adjust=False).mean()
+
     df['Plus_DI'] = 100 * (df['Plus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
     df['Minus_DI'] = 100 * (df['Minus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
-
     dx = 100 * (abs(df['Plus_DI'] - df['Minus_DI']) / (df['Plus_DI'] + df['Minus_DI'] + 1e-10))
     df['ADX'] = dx.ewm(alpha=alpha, adjust=False).mean()
 
