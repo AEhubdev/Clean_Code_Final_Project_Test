@@ -5,17 +5,15 @@ import streamlit as st
 import config
 
 
-@st.cache_data(ttl=60)  # Updates every 60 seconds
+@st.cache_data(ttl=60)
 def fetch_market_data():
-    # We download everything from your start date until today
-    df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE, interval="1d")
-
+    df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # --- Calculations remain the same for consistency ---
+    # Calculations
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     std = df['Close'].rolling(window=20).std()
@@ -23,8 +21,8 @@ def fetch_market_data():
     df['BB_L'] = df['MA20'] - (std * 2)
 
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    gain = (delta.where(delta > 0, 0)).rolling(window=config.RSI_PERIOD).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=config.RSI_PERIOD).mean()
     df['RSI'] = 100 - (100 / (1 + (gain / loss)))
 
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
@@ -39,3 +37,19 @@ def fetch_market_data():
         news = []
 
     return df.dropna(), news
+
+
+def get_metrics_at_point(idx, df_full):
+    safe_idx = min(idx, len(df_full) - 1)
+    row = df_full.iloc[safe_idx]
+    price = float(row['Close'])
+
+    # Relative changes
+    prev_w = float(df_full['Close'].iloc[max(0, safe_idx - 5)])
+    w_c = ((price - prev_w) / prev_w) * 100 if prev_w != 0 else 0
+
+    prev_m = float(df_full['Close'].iloc[max(0, safe_idx - 21)])
+    m_c = ((price - prev_m) / prev_m) * 100 if prev_m != 0 else 0
+
+    vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
+    return price, w_c, m_c, vol
