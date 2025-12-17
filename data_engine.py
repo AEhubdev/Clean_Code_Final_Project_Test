@@ -8,21 +8,20 @@ from datetime import datetime
 
 @st.cache_data(ttl=600)
 def get_gold_terminal_data(timeframe_name="1 Day"):
-    # Map the human-readable "1 Day" to the interval code "1d"
+    # Safe access to config with a hardcoded fallback
     interval_code = config.TIMEFRAME_OPTIONS.get(timeframe_name, "1d")
-
     historical_df = fetch_market_data(interval_code)
 
-    # Now this check is safe because fetch_market_data returns a DataFrame
     if historical_df.empty:
-        # Return empty/zero values so the main app can handle it gracefully
         return pd.DataFrame(), 0.0, [], 0.0
 
     processed_df = apply_technical_indicators(historical_df)
+
+    # Safety check for the final row
+    if processed_df.empty:
+        return pd.DataFrame(), 0.0, [], 0.0
+
     current_price = float(processed_df['Close'].iloc[-1])
-
-    # ... rest of your code ...
-
     ytd_start_price = fetch_ytd_start_price(current_price)
     market_news = fetch_market_news()
 
@@ -30,10 +29,7 @@ def get_gold_terminal_data(timeframe_name="1 Day"):
 
 
 def fetch_market_data(interval_code):
-    """
-    Downloads raw ticker data with appropriate history depth.
-    Ensures a DataFrame is always returned to prevent AttributeErrors.
-    """
+    """Downloads data and strictly flattens MultiIndex headers."""
     if interval_code in ["1m", "2m", "5m"]:
         period = "7d"
     elif interval_code in ["15m", "30m", "60m", "1h"]:
@@ -47,114 +43,86 @@ def fetch_market_data(interval_code):
             period=period,
             interval=interval_code,
             auto_adjust=False,
-            progress=False,
-            multi_level_index=False  # Crucial for newer yfinance versions
+            progress=False
         )
 
-        # Ensure we return a DataFrame, not None
         if df is None or df.empty:
             return pd.DataFrame()
 
-        # Flatten columns if yfinance returns a MultiIndex (Ticker name on top)
+        # CRITICAL FIX: Flatten MultiIndex (Ticker Level)
+        # Recent yfinance returns: [Price, Ticker] columns.
+        # We need to strip the Ticker level so df['Close'] is a Series.
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+
+        # Standardize column names to remove any 'Price' index name
+        df.columns = [str(col).strip() for col in df.columns]
 
         return df.ffill().dropna()
 
     except Exception as e:
-        # Log the error locally but don't crash the app
-        print(f"yfinance Download Error: {e}")
-        return pd.DataFrame()  # Return empty DF so .empty check works
+        st.error(f"yfinance Connection Error: {e}")
+        return pd.DataFrame()
+
+
 def apply_technical_indicators(df):
-    """
-    Calculates statistical indicators.
-    Follows Rule C1.3: Uses full names instead of abbreviations.
-    """
-    # Create a copy to avoid SettingWithCopy warnings
+    """Calculates indicators with safety checks for data length."""
     df = df.copy()
 
-    # Moving Averages
+    # Requirement: Rolling math needs at least N rows
+    min_rows = max(50, config.STOCH_K_PERIOD)
+    if len(df) < min_rows:
+        return df
+
+    # Standard Indicators
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
 
     # Bollinger Bands
-    standard_deviation = df['Close'].rolling(window=20).std()
-    df['BB_Upper'] = df['MA20'] + (standard_deviation * 2)
-    df['BB_Lower'] = df['MA20'] - (standard_deviation * 2)
+    std_dev = df['Close'].rolling(window=20).std()
+    df['BB_Upper'] = df['MA20'] + (std_dev * 2)
+    df['BB_Lower'] = df['MA20'] - (std_dev * 2)
 
-    # RSI (Relative Strength Index)
-    #
-    price_delta = df['Close'].diff()
-    positive_gain = (price_delta.where(price_delta > 0, 0)).rolling(window=14).mean()
-    negative_loss = (-price_delta.where(price_delta < 0, 0)).rolling(window=14).mean()
-    relative_strength = positive_gain / (negative_loss + 1e-10)
-    df['RSI'] = 100 - (100 / (1 + relative_strength))
+    # RSI Logic
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / (loss + 1e-10)
+    df['RSI'] = 100 - (100 / (1 + rs))
 
-    # MACD (Moving Average Convergence Divergence)
-    #
-    ema_fast = df['Close'].ewm(span=12, adjust=False).mean()
-    ema_slow = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = ema_fast - ema_slow
+    # MACD Logic
+    ema12 = df['Close'].ewm(span=12, adjust=False).mean()
+    ema26 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = ema12 - ema26
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
     # Stochastic Oscillator
-    rolling_low = df['Low'].rolling(window=config.STOCH_K_PERIOD).min()
-    rolling_high = df['High'].rolling(window=config.STOCH_K_PERIOD).max()
-    df['Stoch_K'] = 100 * ((df['Close'] - rolling_low) / (rolling_high - rolling_low + 1e-10))
+    low_min = df['Low'].rolling(window=config.STOCH_K_PERIOD).min()
+    high_max = df['High'].rolling(window=config.STOCH_K_PERIOD).max()
+    df['Stoch_K'] = 100 * ((df['Close'] - low_min) / (high_max - low_min + 1e-10))
     df['Stoch_D'] = df['Stoch_K'].rolling(window=config.STOCH_D_PERIOD).mean()
 
-    # Buy/Sell Signals based on Config Thresholds
-    is_oversold = df['RSI'] < config.RSI_OVERSOLD
-    is_overbought = df['RSI'] > config.RSI_OVERBOUGHT
-    macd_is_bullish = df['MACD_Hist'] > 0
-    macd_is_bearish = df['MACD_Hist'] < 0
-
-    df['Buy_Signal'] = is_oversold & macd_is_bullish
-    df['Sell_Signal'] = is_overbought & macd_is_bearish
+    # Signals
+    df['Buy_Signal'] = (df['RSI'] < config.RSI_OVERSOLD) & (df['MACD_Hist'] > 0)
+    df['Sell_Signal'] = (df['RSI'] > config.RSI_OVERBOUGHT) & (df['MACD_Hist'] < 0)
 
     return df
 
 
-def fetch_ytd_start_price(fallback_price):
-    """Retrieves the price from the first day of the current year."""
-    year_start = datetime(datetime.now().year, 1, 1).strftime('%Y-%m-%d')
+def fetch_ytd_start_price(fallback):
+    year_start = f"{datetime.now().year}-01-01"
     try:
-        ytd_data = yf.download(config.TICKER, start=year_start, progress=False)
-        if isinstance(ytd_data.columns, pd.MultiIndex):
-            ytd_data.columns = ytd_data.columns.get_level_values(0)
-
-        return float(ytd_data['Close'].iloc[0]) if not ytd_data.empty else fallback_price
-    except Exception:
-        return fallback_price
+        data = yf.download(config.TICKER, start=year_start, progress=False)
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        return float(data['Close'].iloc[0]) if not data.empty else fallback
+    except:
+        return fallback
 
 
 def fetch_market_news():
-    """Fetches news titles and links."""
     try:
-        search = yf.Search("Gold Price", news_count=8)
-        return search.news
-    except Exception:
+        return yf.Search("Gold Price", news_count=8).news
+    except:
         return []
-
-
-def calculate_market_metrics(current_price, df_full, ytd_start_price):
-    """
-    Calculates percentage changes and volatility.
-    Rule C2.19: Single return point via dictionary.
-    """
-    performance = {"weekly": 0.0, "monthly": 0.0, "ytd": 0.0, "volatility": 0.0}
-
-    try:
-        # Standard financial calculations for performance metrics
-        performance["weekly"] = ((current_price - df_full['Close'].iloc[-5]) / df_full['Close'].iloc[-5]) * 100
-        performance["monthly"] = ((current_price - df_full['Close'].iloc[-21]) / df_full['Close'].iloc[-21]) * 100
-        performance["ytd"] = ((current_price - ytd_start_price) / ytd_start_price) * 100
-
-        daily_returns = df_full['Close'].pct_change()
-        # Annualized Volatility formula: std_dev * sqrt(trading_days)
-        performance["volatility"] = daily_returns.std() * np.sqrt(252) * 100
-    except (IndexError, KeyError, ZeroDivisionError):
-        pass
-
-    return performance
