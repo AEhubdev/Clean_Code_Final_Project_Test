@@ -7,30 +7,29 @@ import config
 
 @st.cache_data(ttl=60)
 def fetch_market_data():
+    # Download data
     df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
 
-    # Critical fix for yfinance multi-index format
+    # Flatten MultiIndex if necessary
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
+    # CRITICAL: Ensure we use the most recent price data
     df = df.ffill().dropna()
 
-    # --- INDICATORS ---
+    # Technical Indicators
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
 
-    # Bollinger Bands
     std = df['Close'].rolling(window=20).std()
     df['BB_U'] = df['MA20'] + (std * 2)
     df['BB_L'] = df['MA20'] - (std * 2)
 
-    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
 
-    # MACD
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = ema12 - ema26
