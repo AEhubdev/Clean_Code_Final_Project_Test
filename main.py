@@ -27,18 +27,22 @@ def render_chart_window(title, chart_type, unique_key):
     """Renders modular chart containers with independent timeframe control."""
     with st.container(border=True):
         header_col, selector_col = st.columns([0.7, 0.3])
-        # ... (header code remains same) ...
 
-        # 1. Get timeframe from the selector
+        # 1. Implementation of Default Interval Logic
         timeframe_options = list(config.TIMEFRAME_OPTIONS.keys())
+        try:
+            # Dynamically find where "1 Month" is in the list
+            default_idx = timeframe_options.index(config.DEFAULT_INTERVAL_LABEL)
+        except ValueError:
+            default_idx = 0
+
         timeframe = selector_col.selectbox(
             "TF",
             timeframe_options,
-            index=2,
+            index=default_idx,  # Starts at "1 Month" automatically
             key=unique_key,
             label_visibility="collapsed"
         )
-
         # 2. Fetch the data LOCALLY within the fragment
         # This ensures 'data' is defined every time the fragment reruns
         try:
