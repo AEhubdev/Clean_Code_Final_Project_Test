@@ -5,28 +5,32 @@ import streamlit as st
 import config
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=60)
 def fetch_market_data():
+    # Fetching extra data to ensure indicators like MA50 have enough lead time
     df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
-
-    # --- THE CRITICAL FIX FOR ATTRIBUTE ERROR ---
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
+    # Fill gaps to prevent chart breaks
     df = df.ffill().dropna()
 
-    # Indicators
+    # --- INDICATORS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
+
+    # Bollinger Bands
     std = df['Close'].rolling(window=20).std()
     df['BB_U'] = df['MA20'] + (std * 2)
     df['BB_L'] = df['MA20'] - (std * 2)
 
+    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
+    df['RSI'] = 100 - (100 / (1 + (gain / loss)))
 
+    # MACD
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = ema12 - ema26
