@@ -15,7 +15,7 @@ def apply_custom_css():
         """, unsafe_allow_html=True)
 
 def render_news_item(article):
-    """Renders a single news headline."""
+    """This is the function line 53 was missing!"""
     st.markdown(f'<a href="{article["link"]}" target="_blank" class="news-link">● {article["title"]}</a>', unsafe_allow_html=True)
 
 def colored_metric(col, label, val_text, delta_val, is_vol=False):
