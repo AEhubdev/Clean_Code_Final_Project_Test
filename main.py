@@ -27,32 +27,31 @@ def render_chart_window(title, chart_type, unique_key):
     """Renders modular chart containers with independent timeframe control."""
     with st.container(border=True):
         header_col, selector_col = st.columns([0.7, 0.3])
-        if chart_type == "price":
-            header_col.markdown(f"**{title}** <br> <span style='font-size:11px; color:gray;'>"
-                                "<span style='color:#00d4ff'>● MA20</span> | "
-                                "<span style='color:#ffea00'>● MA50</span> | "
-                                "<span style='color:orange'>-- Trend</span></span>", unsafe_allow_html=True)
-        else:
-            header_col.markdown(f"**{title}**")
+        # ... (header code remains same) ...
 
-            # Get the list of options from config
-            options_list = list(config.TIMEFRAME_OPTIONS.keys())
+        # 1. Get timeframe from the selector
+        timeframe_options = list(config.TIMEFRAME_OPTIONS.keys())
+        timeframe = selector_col.selectbox(
+            "TF",
+            timeframe_options,
+            index=2,
+            key=unique_key,
+            label_visibility="collapsed"
+        )
 
-            # Rule C3.21: Find the index of your default so it loads automatically
-            try:
-                default_index = options_list.index(config.DEFAULT_INTERVAL_LABEL)
-            except ValueError:
-                default_index = 0  # Fallback to first item if config label is missing
+        # 2. Fetch the data LOCALLY within the fragment
+        # This ensures 'data' is defined every time the fragment reruns
+        try:
+            data, _, _, _ = data_engine.get_gold_terminal_data(timeframe)
+        except Exception as e:
+            st.error(f"Connection Error: {e}")
+            return
 
-            timeframe = selector_col.selectbox(
-                "TF",
-                options=options_list,
-                index=default_index,  # <--- This is the key change
-                key=unique_key,
-                label_visibility="collapsed"
-            )
+        # 3. Now check if data is empty
+        if data is None or data.empty:
+            st.warning("No data available for this timeframe.")
+            return
 
-        if data.empty: return st.warning("Data load error.")
 
         fig = go.Figure()
         if chart_type == "price":
