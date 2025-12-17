@@ -18,11 +18,10 @@ def calculate_trend(y):
 # --- LIVE OVERVIEW FRAGMENT ---
 @st.fragment(run_every="1m")
 def render_live_overview():
-    # Fetch fresh 1-day data for the header metrics (Live update)
+    # Fetch fresh 1-day data for the header metrics
     df_base, price_now, news_list, ytd_start_price = data_engine.get_gold_data("1 Day")
     metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start_price)
 
-    # 1. LIVE HEADER
     st.title("🏆 Gold Multi-Timeframe Terminal")
     cols = st.columns(5)
     cols[0].metric("Live Gold", f"${price_now:,.2f}")
@@ -32,11 +31,10 @@ def render_live_overview():
     styles.colored_metric(cols[4], "Volatility", f"{metrics[3]:.2f}%", metrics[3], is_vol=True)
     st.divider()
 
-    # 2. MAIN LAYOUT
     col_charts, col_sidebar = st.columns([0.72, 0.28])
 
     with col_charts:
-        # Default index set to 4 (1 Month) as requested
+        # Default index 4 = "1 Month" based on your config
         render_window("PRICE ACTION", "price", "p1", default_idx=4)
         render_window("VOLUME", "volume", "v1", default_idx=4)
         render_window("RSI", "rsi", "r1", default_idx=4)
@@ -48,33 +46,27 @@ def render_live_overview():
         latest = df_base.iloc[-1]
         status, color = trading_logic.evaluate_status(latest)
 
-        # FIXED: Explicitly call the component to render HTML properly
-        styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
+        # FIXED: Wrapped in st.markdown to force HTML rendering
+        st.markdown(styles.display_signal("PRIMARY ACTION", status, "LIVE", color), unsafe_allow_html=True)
 
-        st.markdown("---")
         c1, c2 = st.columns(2)
         r_val = latest['RSI']
         r_color = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
         c1.markdown(
-            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_color}">'
-            f'<small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
+            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_color}"><small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
             unsafe_allow_html=True)
 
         m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
         m_color = "green" if m_dir == "UP" else "red"
         c2.markdown(
-            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}">'
-            f'<small style="color:gray">MACD</small><br><strong style="font-size:18px; color:{m_color}">{m_dir}</strong></div>',
+            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}"><small style="color:gray">MACD</small><br><strong style="font-size:18px; color:{m_color}">{m_dir}</strong></div>',
             unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         sk, sd = latest['Stoch_K'], latest['Stoch_D']
         s_col = "green" if sk > sd else "red"
         st.markdown(
-            f'<div style="background:#1e2130; padding:12px; border-radius:5px;">'
-            f'<div style="display:flex; justify-content:space-between"><span style="color:gray">Stoch (K/D)</span>'
-            f'<span style="color:{s_col}; font-weight:bold">{"Bullish" if sk > sd else "Bearish"}</span></div>'
-            f'<div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div></div>',
+            f'<div style="background:#1e2130; padding:12px; border-radius:5px;"><div style="display:flex; justify-content:space-between"><span style="color:gray">Stoch (K/D)</span><span style="color:{s_col}; font-weight:bold">{"Bullish" if sk > sd else "Bearish"}</span></div><div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div></div>',
             unsafe_allow_html=True)
 
         st.divider()
@@ -83,7 +75,6 @@ def render_live_overview():
             st.markdown(f"● [{n['title']}]({n['link']})")
 
 
-# --- CHART WINDOW FUNCTION ---
 def render_window(title, chart_type, key_id, default_idx=2):
     with st.container(border=True):
         h_col, s_col = st.columns([0.7, 0.3])
@@ -97,9 +88,10 @@ def render_window(title, chart_type, key_id, default_idx=2):
 
         tf = s_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()), index=default_idx, key=key_id,
                              label_visibility="collapsed")
-
         data, _, _, _ = data_engine.get_gold_data(tf)
-        if data.empty: return st.warning("Data load error.")
+
+        if data.empty:
+            return st.warning("Data load error.")
 
         fig = go.Figure()
         if chart_type == "price":
@@ -147,5 +139,4 @@ def render_window(title, chart_type, key_id, default_idx=2):
         st.plotly_chart(fig, use_container_width=True)
 
 
-# Executing the terminal
 render_live_overview()
