@@ -9,25 +9,25 @@ from datetime import datetime
 @st.cache_data(ttl=600)
 def get_gold_data(interval_name="1 Day"):
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
-    period = "60d" if interval_code in ["15m", "1h"] else "max"
+
+    # We pull more data than needed to ensure Moving Averages (MA50) have enough points to calculate
+    period = "60d" if interval_code in ["15m", "1h"] else "2y"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
     if df.empty: return pd.DataFrame(), 0.0, [], 0.0
 
-    # Flatten MultiIndex for main dataframe
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # --- MOVING AVERAGES & BOLLINGER BANDS ---
+    # --- INDICATORS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     df['StdDev'] = df['Close'].rolling(window=20).std()
     df['BB_U'] = df['MA20'] + (df['StdDev'] * 2)
     df['BB_L'] = df['MA20'] - (df['StdDev'] * 2)
 
-    # --- RSI & MACD ---
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -39,7 +39,6 @@ def get_gold_data(interval_name="1 Day"):
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
-    # --- STOCHASTIC ---
     k_period, d_period = 14, 3
     df['Low_Min'] = df['Low'].rolling(window=k_period).min()
     df['High_Max'] = df['High'].rolling(window=k_period).max()
@@ -52,19 +51,13 @@ def get_gold_data(interval_name="1 Day"):
     df['Buy_Signal'] = buy_cond & ~buy_cond.shift(1).fillna(False)
     df['Sell_Signal'] = sell_cond & ~sell_cond.shift(1).fillna(False)
 
-    # --- YTD START PRICE (FIXED KEYERROR HERE) ---
+    # --- YTD PRICE ---
     try:
         y_start = f"{datetime.now().year}-01-01"
         ytd_data = yf.download(config.TICKER, start=y_start, progress=False)
-
-        # Flatten MultiIndex for YTD data
         if isinstance(ytd_data.columns, pd.MultiIndex):
             ytd_data.columns = ytd_data.columns.get_level_values(0)
-
-        if not ytd_data.empty:
-            ytd_start_price = ytd_data['Close'].iloc[0]
-        else:
-            ytd_start_price = df['Close'].iloc[0]
+        ytd_start_price = ytd_data['Close'].iloc[0] if not ytd_data.empty else df['Close'].iloc[0]
     except:
         ytd_start_price = df['Close'].iloc[0]
 
@@ -80,14 +73,12 @@ def get_gold_data(interval_name="1 Day"):
 
 def calculate_metrics(price, df_full, ytd_start):
     try:
-        # Extra safety for short dataframes
-        idx_5 = -5 if len(df_full) >= 5 else -1
-        idx_21 = -21 if len(df_full) >= 21 else -1
-
-        w_c = ((price - df_full['Close'].iloc[idx_5]) / df_full['Close'].iloc[idx_5]) * 100
-        m_c = ((price - df_full['Close'].iloc[idx_21]) / df_full['Close'].iloc[idx_21]) * 100
+        w_idx = -5 if len(df_full) >= 5 else 0
+        m_idx = -21 if len(df_full) >= 21 else 0
+        w_c = ((price - df_full['Close'].iloc[w_idx]) / df_full['Close'].iloc[w_idx]) * 100
+        m_c = ((price - df_full['Close'].iloc[m_idx]) / df_full['Close'].iloc[m_idx]) * 100
         ytd_c = ((price - ytd_start) / ytd_start) * 100
-        vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
+        vol = df_full['Close'].pct_change().tail(30).std() * np.sqrt(252) * 100
         return w_c, m_c, ytd_c, vol
     except:
         return 0.0, 0.0, 0.0, 0.0

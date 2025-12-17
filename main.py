@@ -9,17 +9,14 @@ styles.apply_custom_styles()
 
 def calculate_trend(y):
     x = np.arange(len(y))
-    n = len(x)
-    m = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (n * np.sum(x ** 2) - (np.sum(x) ** 2))
-    b = (np.sum(y) - m * np.sum(x)) / n
+    m, b = np.polyfit(x, y, 1)
     return m * x + b
 
 
 @st.fragment(run_every="1m")
 def render_live_overview():
-    # Fresh data for live metrics
-    df_base, price_now, news_list, ytd_start_price = data_engine.get_gold_data("1 Day")
-    metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start_price)
+    df_base, price_now, news_list, ytd_start = data_engine.get_gold_data("1 Day")
+    metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start)
 
     st.title("🏆 Gold Multi-Timeframe Terminal")
     cols = st.columns(5)
@@ -33,7 +30,6 @@ def render_live_overview():
     col_charts, col_sidebar = st.columns([0.72, 0.28])
 
     with col_charts:
-        # Default index 4 is "1 Month"
         render_window("PRICE ACTION", "price", "p1", default_idx=4)
         render_window("VOLUME", "volume", "v1", default_idx=4)
         render_window("RSI", "rsi", "r1", default_idx=4)
@@ -43,17 +39,14 @@ def render_live_overview():
         st.markdown("### 🚦 Signal Center")
         latest = df_base.iloc[-1]
         status, color = trading_logic.evaluate_status(latest)
-
-        # Now renders as a box because of the fix in styles.py
         styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
 
         st.markdown("---")
-        # Sub-metrics RSI/MACD/Stoch
         c1, c2 = st.columns(2)
         r_val = latest['RSI']
-        r_color = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
+        r_col = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
         c1.markdown(
-            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_color}"><small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
+            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_col}"><small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
             unsafe_allow_html=True)
 
         m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
@@ -79,19 +72,59 @@ def render_window(title, chart_type, key_id, default_idx=2):
     with st.container(border=True):
         h_col, s_col = st.columns([0.7, 0.3])
         h_col.markdown(f"**{title}**")
-        tf = s_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()), index=default_idx, key=key_id,
+        tf = s_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()), index=default_idx, key=f"sel_{key_id}",
                              label_visibility="collapsed")
 
-        data, _, _, _ = data_engine.get_gold_data(tf)
+        full_df, _, _, _ = data_engine.get_gold_data(tf)
+        # Slicing: Only show the last 60 periods so the chart is readable
+        data = full_df.tail(60)
+
         if data.empty: return st.warning("Data load error.")
 
         fig = go.Figure()
-        # ... [Plotly trace logic same as your provided code] ...
-        # (Assuming your candlestick and indicator traces are here)
+
+        if chart_type == "price":
+            fig.add_trace(
+                go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
+                               name="Price"))
+            fig.add_trace(go.Scatter(x=data.index, y=data['MA20'], line=dict(color='#00d4ff', width=1.5), name="MA20"))
+            fig.add_trace(go.Scatter(x=data.index, y=data['MA50'], line=dict(color='#ffea00', width=1.5), name="MA50"))
+            fig.add_trace(go.Scatter(x=data.index, y=data['BB_U'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
+                                     name="BB Up"))
+            fig.add_trace(go.Scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
+                                     fill='tonexty', name="BB Low"))
+
+            trend = calculate_trend(data['Close'].values)
+            fig.add_trace(
+                go.Scatter(x=data.index, y=trend, line=dict(color='orange', width=2, dash='dot'), name="Trend"))
+
+            # Signals
+            buys = data[data['Buy_Signal']]
+            sells = data[data['Sell_Signal']]
+            fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.99, mode='markers',
+                                     marker=dict(symbol='triangle-up', size=12, color='#00FF41'), name="Buy"))
+            fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.01, mode='markers',
+                                     marker=dict(symbol='triangle-down', size=12, color='#FF3131'), name="Sell"))
+            fig.update_layout(height=400, xaxis_rangeslider_visible=False)
+
+        elif chart_type == "volume":
+            v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(data['Close'], data['Open'])]
+            fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors))
+            fig.update_layout(height=180)
+
+        elif chart_type == "rsi":
+            fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC')))
+            fig.add_hline(y=70, line_color="red", line_dash="dash")
+            fig.add_hline(y=30, line_color="green", line_dash="dash")
+            fig.update_layout(height=180, yaxis=dict(range=[0, 100]))
+
+        elif chart_type == "macd":
+            m_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
+            fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors))
+            fig.update_layout(height=180)
 
         fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5), showlegend=False)
-        # We use key_id (e.g., "p1", "v1") to ensure every chart has a unique ID in the DOM
-        st.plotly_chart(fig, use_container_width=True, key=f"chart_{key_id}")
+        st.plotly_chart(fig, use_container_width=True, key=f"plot_{key_id}_{chart_type}")
 
 
 render_live_overview()
