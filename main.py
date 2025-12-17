@@ -56,12 +56,14 @@ def render_chart_window(title, chart_type, unique_key):
         else:
             header_col.markdown(f"**{title}**")
 
-        timeframe = selector_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()),
-                                           index=2, key=unique_key, label_visibility="collapsed")
-
-        data, _, _, _ = data_engine.get_gold_terminal_data(timeframe)
-        if data.empty:
-            return st.warning("Data load error.")
+        # In main.py
+        timeframe = selector_col.selectbox(
+            "TF",
+            list(config.TIMEFRAME_OPTIONS.keys()),  # This pulls the new list from config.py
+            index=2,
+            key=unique_key,
+            label_visibility="collapsed"
+        )
 
         fig = go.Figure()
 

@@ -27,15 +27,19 @@ def get_gold_terminal_data(timeframe_name="1 Day"):
     return processed_df, current_price, market_news, ytd_start_price
 
 
+
 def fetch_market_data(interval_code):
-    """Downloads raw ticker data (Rule S2.40: Internal machinery)."""
-    period = "60d" if interval_code in ["15m", "1h"] else "max"
+    """Downloads raw ticker data with appropriate history depth."""
+    # Determine lookback period based on interval (Rule C2.17)
+    if interval_code in ["1m", "2m", "5m"]:
+        period = "7d"
+    elif interval_code in ["15m", "30m", "60m", "1h"]:
+        period = "60d"
+    else:
+        period = "max"
+
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
 
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    return df.ffill().dropna()
 
 
 def apply_technical_indicators(df):
