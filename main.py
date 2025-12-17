@@ -8,16 +8,23 @@ st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
 styles.apply_custom_css()
 
 # --- INITIALIZATION ---
-if 'step' not in st.session_state:
-    st.session_state.step = config.INITIAL_STEP
-    st.session_state.trades = []
+# main.py (Initialization section)
 
+# 1. Fetch Data First
 df_full, news_list = data_engine.fetch_market_data()
 
-# Loop simulation logic
-if st.session_state.step >= len(df_full):
-    st.session_state.step = config.INITIAL_STEP
+# 2. Hardened Initialization
+if 'step' not in st.session_state:
+    # Anchor to the LATEST row (Today's Price)
+    st.session_state.step = len(df_full) - 1
+    st.session_state.trades = []
 
+# 3. Handle the Loop
+# If the simulation hits the end, stay at the latest data or reset
+if st.session_state.step >= len(df_full):
+    st.session_state.step = len(df_full) - 1
+
+# Proceed with current_row...
 current_row = df_full.iloc[st.session_state.step]
 price, w_perc, m_perc, vol_val = data_engine.get_metrics_at_point(st.session_state.step, df_full)
 
