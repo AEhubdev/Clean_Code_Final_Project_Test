@@ -8,20 +8,20 @@ from datetime import datetime
 
 @st.cache_data(ttl=600)
 def get_gold_terminal_data(timeframe_name="1 Day"):
-    # Ensure this matches your config keys exactly
+    # Map the human-readable "1 Day" to the interval code "1d"
     interval_code = config.TIMEFRAME_OPTIONS.get(timeframe_name, "1d")
 
     historical_df = fetch_market_data(interval_code)
 
-    # This check now works because historical_df is guaranteed to be a DataFrame
+    # Now this check is safe because fetch_market_data returns a DataFrame
     if historical_df.empty:
+        # Return empty/zero values so the main app can handle it gracefully
         return pd.DataFrame(), 0.0, [], 0.0
 
     processed_df = apply_technical_indicators(historical_df)
+    current_price = float(processed_df['Close'].iloc[-1])
 
-    # Ensure we get a single float value
-    last_price = processed_df['Close'].iloc[-1]
-    current_price = float(last_price.iloc[0]) if hasattr(last_price, 'iloc') else float(last_price)
+    # ... rest of your code ...
 
     ytd_start_price = fetch_ytd_start_price(current_price)
     market_news = fetch_market_news()
