@@ -34,8 +34,25 @@ def get_gold_data():
     df['STOCH_K'] = (df['Close'] - df['Low'].rolling(14).min()) * 100 / (
                 df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10)
 
-    # Signal Logic for the chart
-    df['Buy_Signal'] = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
-    df['Sell_Signal'] = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
+    # Signal Logic for the chart markers
+    df['Buy_Signal'] = (df['RSI'] < 35) & (df['MACD_Hist'] > 0)
+    df['Sell_Signal'] = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
 
-    return df[df.index >= config.CHART_START], float(df['Close'].iloc[-1]), df
+    # News Fetch
+    try:
+        search = yf.Search("Gold Market", news_count=8)
+        news_data = search.news
+    except:
+        news_data = []
+
+    return df[df.index >= config.CHART_START], float(df['Close'].iloc[-1]), df, news_data
+
+
+def calculate_metrics(price, df_full):
+    w_c = ((price - float(df_full['Close'].iloc[-5])) / float(df_full['Close'].iloc[-5])) * 100
+    m_c = ((price - float(df_full['Close'].iloc[-21])) / float(df_full['Close'].iloc[-21])) * 100
+    y_df = df_full[df_full.index >= "2025-01-01"]
+    y_s = y_df['Close'].iloc[0] if not y_df.empty else price
+    y_c = ((price - y_s) / y_s) * 100
+    vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
+    return w_c, m_c, y_c, vol
