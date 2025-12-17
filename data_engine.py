@@ -6,19 +6,23 @@ import streamlit as st
 
 @st.cache_data(ttl=60)
 def fetch_market_data():
-    # Force auto_adjust=False for correct price ($4300+). Start Dec 2024.
+    # 1. Download Raw Gold Futures ($4300+ price)
     df = yf.download("GC=F", start="2024-12-01", auto_adjust=False)
 
-    # 2025 Multi-Index Fix
+    # 2. Fix 2025 Header Bug (Flatten MultiIndex)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # Indicators
+    # 3. Moving Averages & Bollinger Bands
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
+    std = df['Close'].rolling(window=20).std()
+    df['BB_Upper'] = df['MA20'] + (std * 2)
+    df['BB_Lower'] = df['MA20'] - (std * 2)
 
+    # 4. MACD & RSI
     ema12 = df['Close'].ewm(span=12).mean()
     ema26 = df['Close'].ewm(span=26).mean()
     df['MACD'] = ema12 - ema26
@@ -33,8 +37,7 @@ def fetch_market_data():
     return df.dropna()
 
 
-def get_signal(row):
-    if row['RSI'] < 30: return "STRONG BUY", "#00FF41"
-    if row['RSI'] > 70: return "STRONG SELL", "#FF3131"
-    if row['MACD_Hist'] > 0: return "BULLISH", "#00E5FF"
-    return "NEUTRAL", "gray"
+def get_signal_logic(row):
+    if row['RSI'] < 32: return "STRONG BUY", "#00FF41"
+    if row['RSI'] > 68: return "STRONG SELL", "#FF3131"
+    return "NEUTRAL", "#888888"
