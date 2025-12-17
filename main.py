@@ -128,7 +128,6 @@ with col_sidebar:
     # 1. Main Action Card
     status, color = trading_logic.evaluate_status(latest)
     styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
-
     st.markdown("---")
 
     # 2. RSI & MACD Indicator Grid
@@ -154,7 +153,7 @@ with col_sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # 3. Stochastic Oscillator (Ctochastik)
+    # 3. Stochastic (Ctochastik) Card
     st.markdown("<br>", unsafe_allow_html=True)
     sk, sd = latest['Stoch_K'], latest['Stoch_D']
     s_col = "green" if sk > sd else "red"
@@ -168,15 +167,20 @@ with col_sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # 4. Trend Strength (ADX)
+    # 4. Trend Strength (ADX) Text Only
     st.markdown("<br>", unsafe_allow_html=True)
     adx_val = latest['ADX']
-    t_str = "EXTREME" if adx_val > 50 else "STRONG" if adx_val > 25 else "WEAK"
-    t_col = "orange" if adx_val > 50 else "green" if adx_val > 25 else "gray"
+    # Professional Threshold: Above 25 is Strong, Below 25 is Weak
+    trend_status = "STRONG" if adx_val >= 25 else "WEAK"
+    trend_color = "#00FF41" if adx_val >= 25 else "#FF3131"
 
-    st.markdown(f"**Trend Strength:** <span style='color:{t_col}'>{t_str}</span>", unsafe_allow_html=True)
-    st.progress(min(adx_val / 100, 1.0))
-    st.caption(f"ADX: {adx_val:.1f} (Reliable above 25)")
+    st.markdown(f"""
+        <div style="background:#1e2130; padding:12px; border-radius:5px; border-top: 2px solid {trend_color}">
+            <small style="color:gray">TREND STRENGTH</small><br>
+            <strong style="font-size:20px; color:{trend_color}">{trend_status}</strong>
+            <span style="float:right; color:gray; font-size:12px">ADX: {adx_val:.1f}</span>
+        </div>
+    """, unsafe_allow_html=True)
 
     st.divider()
     st.markdown("### Market News")
