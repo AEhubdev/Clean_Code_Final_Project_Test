@@ -35,6 +35,35 @@ def get_gold_data(interval_name="1 Day"):
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
+    # --- STOCHASTIC OSCILLATOR (Ctochastik) ---
+    k_period, d_period = 14, 3
+    df['Low_Min'] = df['Low'].rolling(window=k_period).min()
+    df['High_Max'] = df['High'].rolling(window=k_period).max()
+    df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
+    df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
+
+    # --- TREND STRENGTH (ADX) ---
+    # Directional Movement
+    df['UpM'] = df['High'].diff()
+    df['DoM'] = -df['Low'].diff()
+    df['Plus_DM'] = np.where((df['UpM'] > df['DoM']) & (df['UpM'] > 0), df['UpM'], 0)
+    df['Minus_DM'] = np.where((df['DoM'] > df['UpM']) & (df['DoM'] > 0), df['DoM'], 0)
+
+    # True Range for ATR
+    tr1 = df['High'] - df['Low']
+    tr2 = abs(df['High'] - df['Close'].shift(1))
+    tr3 = abs(df['Low'] - df['Close'].shift(1))
+    df['TR'] = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    # Wilder's Smoothing (using EWM with alpha=1/period)
+    alpha = 1 / 14
+    df['ATR'] = df['TR'].ewm(alpha=alpha, adjust=False).mean()
+    df['Plus_DI'] = 100 * (df['Plus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
+    df['Minus_DI'] = 100 * (df['Minus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
+
+    dx = 100 * (abs(df['Plus_DI'] - df['Minus_DI']) / (df['Plus_DI'] + df['Minus_DI'] + 1e-10))
+    df['ADX'] = dx.ewm(alpha=alpha, adjust=False).mean()
+
     # --- SIGNALS ---
     buy_cond = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
     sell_cond = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
