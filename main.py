@@ -1,86 +1,81 @@
 import streamlit as st
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import data_engine, time
+from data_engine import get_gold_data, calculate_metrics
+from styles import apply_custom_styles, colored_metric, display_signal
 
 st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
+apply_custom_styles()
 
-# CSS for Bloomberg-style Overview
-st.markdown("""
-    <style>
-    [data-testid="stMetric"] { background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; }
-    [data-testid="stMetricValue"] { color: gold !important; font-weight: bold; }
-    </style>
-""", unsafe_allow_html=True)
+# --- DATA ---
+data, price, df_full, news_list = get_gold_data()
+w_c, m_c, y_c, vol_calc = calculate_metrics(price, df_full)
 
-df = data_engine.fetch_market_data()
-latest = df.iloc[-1]
-status, s_color = data_engine.get_signal_logic(latest)
-
-# --- SECTION 1: OVERVIEW BAR ---
-st.title("🏆 GOLD STRATEGIC TERMINAL")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("LIVE PRICE", f"${latest['Close']:,.2f}", f"{latest['Close'] - df['Close'].iloc[-2]:+.2f}")
-m2.metric("RSI (14D)", f"{latest['RSI']:.1f}")
-m3.metric("MACD HIST", f"{latest['MACD_Hist']:.2f}")
-m4.metric("VOLATILITY", f"{(df['Close'].pct_change().std() * 100):.2f}%")
-
+# --- HEADER ---
+st.title("🏆 Gold Market Overview")
+st.caption(f"Live Price Logic: Dec 2025 Market | Data Start: Dec 2024")
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("Current Price", f"${price:,.2f}", f"{w_c:+.2f}%")
+colored_metric(c2, "Weekly Change", f"{w_c:+.2f}%", w_c)
+colored_metric(c3, "Monthly Change", f"{m_c:+.2f}%", m_c)
+colored_metric(c4, "YTD Change", f"{y_c:+.2f}%", y_c)
+colored_metric(c5, "Volatility", f"{vol_calc:.2f}%", vol_calc, is_vol=True)
 st.divider()
 
-# --- SECTION 2: MAIN DASHBOARD (70/30 SPLIT) ---
-col_left, col_right = st.columns([0.72, 0.28])
+col_charts, col_signals = st.columns([0.72, 0.28])
 
-with col_left:
-    # --- CHART: PRICE + BB + VOLUME ---
-    # We use subplots to separate Volume from Price
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        vertical_spacing=0.03, subplot_titles=('Price & BBs', 'Volume'),
-                        row_width=[0.2, 0.7])
+with col_charts:
+    # WINDOW 1: TREND
+    st.markdown('<div class="window-header">MARKET TREND & INDICATORS HISTORY</div>', unsafe_allow_html=True)
+    fig1 = go.Figure()
+    fig1.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"))
+    fig1.add_trace(go.Scatter(x=data.index, y=data['MA20'], name="MA 20", line=dict(color='#FFEB3B', width=1.5)))
+    fig1.add_trace(go.Scatter(x=data.index, y=data['MA50'], name="MA 50", line=dict(color='#E91E63', width=1.5)))
+    fig1.add_trace(go.Scatter(x=data.index, y=data['BB_U'], name="BB Upper", line=dict(color='rgba(173, 216, 230, 0.5)', dash='dash')))
+    fig1.add_trace(go.Scatter(x=data.index, y=data['BB_L'], name="BB Lower", line=dict(color='rgba(173, 216, 230, 0.5)', dash='dash'), fill='tonexty', fillcolor='rgba(173, 216, 230, 0.05)'))
+    fig1.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, margin=dict(t=10, b=10))
+    st.plotly_chart(fig1, use_container_width=True)
 
-    # Candlestick
-    fig.add_trace(
-        go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Gold"),
-        row=1, col=1)
+    # WINDOW 2: VOLUME
+    st.markdown('<div class="window-header">TRADING VOLUME HISTORY</div>', unsafe_allow_html=True)
+    v_colors = ['#26a69a' if c >= o else '#ef5350' for c, o in zip(data['Close'], data['Open'])]
+    fig2 = go.Figure(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors, name="Volume"))
+    fig2.update_layout(template="plotly_dark", height=200, margin=dict(t=10, b=10))
+    st.plotly_chart(fig2, use_container_width=True)
 
-    # Bollinger Bands & MAs
-    fig.add_trace(
-        go.Scatter(x=df.index, y=df['BB_Upper'], line=dict(color='rgba(173, 216, 230, 0.4)'), name="BB Upper"), row=1,
-        col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], line=dict(color='rgba(173, 216, 230, 0.4)'), name="BB Lower",
-                             fill='tonexty'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='gold', width=1.5), name="MA20"), row=1, col=1)
+    # WINDOW 3: RSI
+    st.markdown('<div class="window-header">RELATIVE STRENGTH (RSI) HISTORY</div>', unsafe_allow_html=True)
+    fig3 = go.Figure()
+    fig3.add_trace(go.Scatter(x=data.index, y=data['RSI'], name="RSI", line=dict(color='#BB86FC', width=2)))
+    fig3.add_hline(y=70, line_dash="dash", line_color="#FF3131")
+    fig3.add_hline(y=30, line_dash="dash", line_color="#00FF41")
+    fig3.update_layout(template="plotly_dark", height=200, yaxis=dict(range=[0, 100]), margin=dict(t=10, b=10))
+    st.plotly_chart(fig3, use_container_width=True)
 
-    # Volume (Separated at bottom)
-    colors = ['green' if df['Close'].iloc[i] > df['Open'].iloc[i] else 'red' for i in range(len(df))]
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
+    # WINDOW 4: MACD
+    st.markdown('<div class="window-header">MACD MOMENTUM HISTORY</div>', unsafe_allow_html=True)
+    fig4 = go.Figure()
+    fig4.add_trace(go.Scatter(x=data.index, y=data['MACD'], name="MACD", line=dict(color='#00E5FF', width=2)))
+    fig4.add_trace(go.Scatter(x=data.index, y=data['MACD_Signal'], name="Signal", line=dict(color='#FFCA28', width=1.5)))
+    h_colors = ['#26a69a' if val >= 0 else '#ef5350' for val in data['MACD_Hist']]
+    fig4.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], name="Histogram", marker_color=h_colors))
+    fig4.update_layout(template="plotly_dark", height=250, margin=dict(t=10, b=10))
+    st.plotly_chart(fig4, use_container_width=True)
 
-    fig.update_layout(template="plotly_dark", height=600, xaxis_rangeslider_visible=False,
-                      margin=dict(t=30, b=0, l=0, r=0))
-    st.plotly_chart(fig, use_container_width=True)
+    # NEWS
+    st.markdown('<div class="window-header">📰 LATEST MARKET HEADLINES</div>', unsafe_allow_html=True)
+    if news_list:
+        for article in news_list:
+            st.markdown(f'<a href="{article["link"]}" target="_blank" class="news-link">● {article["title"]}</a>', unsafe_allow_html=True)
 
-    # --- MOMENTUM CHARTS (MACD / RSI) ---
-    st.markdown("#### Momentum Oscillators")
-    fig_mom = make_subplots(rows=1, cols=2)
-    # MACD
-    fig_mom.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name="MACD Hist"), row=1, col=1)
-    # RSI
-    fig_mom.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='magenta'), name="RSI"), row=1, col=2)
-    fig_mom.update_layout(template="plotly_dark", height=200, margin=dict(t=0, b=0))
-    st.plotly_chart(fig_mom, use_container_width=True)
+with col_signals:
+    st.markdown('<div class="sidebar-header">📡 TRADING SIGNALS</div>', unsafe_allow_html=True)
+    latest = data.iloc[-1]
+    rsi_stat = "STRONG SELL" if latest['RSI'] > 70 else ("STRONG BUY" if latest['RSI'] < 30 else "NEUTRAL")
+    rsi_col = "#FF3131" if latest['RSI'] > 70 else ("#00FF41" if latest['RSI'] < 30 else "#808495")
+    macd_stat = "STRONG BUY" if latest['MACD'] > latest['MACD_Signal'] else "STRONG SELL"
+    macd_col = "#00FF41" if latest['MACD'] > latest['MACD_Signal'] else "#FF3131"
 
-with col_right:
-    st.markdown("### 🔔 SYSTEM SIGNALS")
-    st.markdown(f"""
-        <div style="background:{s_color}; padding:20px; border-radius:10px; text-align:center;">
-            <h1 style="color:white; margin:0;">{status}</h1>
-            <small style="color:white;">Based on RSI/BB Alignment</small>
-        </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("#### Signal Log")
-    log = df.tail(15).copy()
-    log['Signal'] = log.apply(lambda x: data_engine.get_signal_logic(x)[0], axis=1)
-    st.table(log[['Close', 'Signal']].sort_index(ascending=False))
-
-time.sleep(30)
-st.rerun()
+    display_signal("RSI (14)", f"{latest['RSI']:.1f}", rsi_stat, rsi_col)
+    display_signal("MACD", f"{latest['MACD']:.2f}", macd_stat, macd_col)
+    display_signal("STOCH (%K)", f"{latest['STOCH_K']:.1f}%", "ACTIVE", "#FFA500")
+    display_signal("TREND STRENGTH", "BULLISH" if latest['Close'] > latest['MA20'] else "BEARISH", "LIVE", "#00FF41")
