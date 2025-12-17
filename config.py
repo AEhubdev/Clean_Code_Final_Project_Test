@@ -1,15 +1,14 @@
-# Asset Settings
+# Constants to avoid 'Magic Numbers' (Requirement 21)
 TICKER_SYMBOL = "GC=F"
 ASSET_NAME = "Gold"
+INITIAL_DATA_START_DATE = "2024-09-01"
 
-# Technical Indicator Settings
+# Technical Settings
 RSI_PERIOD = 14
 RSI_OVERBOUGHT = 70
 RSI_OVERSOLD = 30
-MA_SHORT_WINDOW = 20
-MA_LONG_WINDOW = 50
+MA_SHORT = 20
+MA_LONG = 50
 
-# Simulation Settings
-REFRESH_RATE_SECONDS = 1
-INITIAL_DATA_START_DATE = "2024-06-01"
-INITIAL_START_STEP = 100
+# Simulation Pace
+REFRESH_RATE = 1

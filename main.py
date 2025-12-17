@@ -4,71 +4,68 @@ import time
 import plotly.graph_objects as go
 import data_engine, trading_logic, styles, config
 
-# 1. Page Configuration
 st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
-styles.apply_terminal_theme()
+styles.apply_custom_css()
 
-# 2. State Management for Simulation
-if 'current_step' not in st.session_state:
-    st.session_state.current_step = config.INITIAL_START_STEP
+if 'step' not in st.session_state:
+    st.session_state.step = 100
     st.session_state.trades = []
 
-# 3. Data Processing
-with st.spinner('Loading Live Feed...'):
-    data = data_engine.apply_indicators(data_engine.fetch_historical_data())
+# Data
+df_full, news_list = data_engine.get_market_data()
+df_sim = df_full.iloc[:st.session_state.step]
+latest = df_sim.iloc[-1]
+price = float(latest['Close'])
 
-if st.session_state.current_step >= len(data):
-    st.success("Simulation Cycle Complete.")
-    st.stop()
+w_c, m_c, y_c, vol = data_engine.calculate_top_metrics(price, df_full)
 
-# Slicing the 'Live' view
-sim_df = data.iloc[:st.session_state.current_step]
-latest = sim_df.iloc[-1]
+# UI Header
+st.title(f"🏆 {config.ASSET_NAME} Market Overview")
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("Current Price", f"${price:,.2f}")
+styles.colored_metric(c2, "Weekly %", f"{w_c:+.2f}%", w_c)
+styles.colored_metric(c3, "Monthly %", f"{m_c:+.2f}%", m_c)
+styles.colored_metric(c4, "YTD %", f"{y_c:+.2f}%", y_c)
+styles.colored_metric(c5, "Volatility", f"{vol:.2f}%", vol, is_vol=True)
+st.divider()
 
-# 4. Algo Execution
-current_action = trading_logic.get_signal(latest)
-if current_action in ["BUY", "SELL"]:
-    if not st.session_state.trades or st.session_state.trades[-1]['Time'] != latest.name:
-        st.session_state.trades.append({"Time": latest.name, "Action": current_action, "Price": latest['Close']})
+# Charts
+col_charts, col_signals = st.columns([0.7, 0.3])
 
-# 5. UI Layout
-st.title(f"🏆 {config.ASSET_NAME} Algorithmic Terminal")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Current Price", f"${latest['Close']:,.2f}")
-c2.metric("RSI (14)", f"{latest['RSI']:.2f}")
-c3.metric("Step", st.session_state.current_step)
-c4.metric("Total Trades", len(st.session_state.trades))
+with col_charts:
+    st.markdown('<div class="window-header">LIVE TREND & INDICATORS</div>', unsafe_allow_html=True)
+    fig1 = go.Figure()
+    fig1.add_trace(go.Candlestick(x=df_sim.index, open=df_sim['Open'], high=df_sim['High'], low=df_sim['Low'],
+                                  close=df_sim['Close'], name="Price"))
+    fig1.add_trace(go.Scatter(x=df_sim.index, y=df_sim['MA20'], name="MA20", line=dict(color='#FFEB3B')))
 
-chart_col, news_col = st.columns([0.75, 0.25])
-
-with chart_col:
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=sim_df.index, y=sim_df['Close'], name="Price", line=dict(color='white')))
-    fig.add_trace(go.Scatter(x=sim_df.index, y=sim_df['MA20'], name="MA 20", line=dict(color='#FFD700', width=1)))
-
-    # Plotting Trade Markers
+    # Plot trade history (Requirement: Precise time of decisions)
     if st.session_state.trades:
         tdf = pd.DataFrame(st.session_state.trades)
-        for act, color, sym in [("BUY", "#00FF41", "triangle-up"), ("SELL", "#FF3131", "triangle-down")]:
-            sub = tdf[tdf['Action'] == act]
-            fig.add_trace(
-                go.Scatter(x=sub['Time'], y=sub['Price'], mode='markers', marker=dict(symbol=sym, size=12, color=color),
-                           name=act))
+        fig1.add_trace(go.Scatter(x=tdf['Time'], y=tdf['Price'], mode='markers',
+                                  marker=dict(symbol='diamond', size=10, color='white'), name="Signals"))
 
-    fig.update_layout(template="plotly_dark", height=500, margin=dict(t=10, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    fig1.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False)
+    st.plotly_chart(fig1, use_container_width=True)
 
-with news_col:
-    st.markdown("### Algorithm Status")
-    color_class = f"status-{current_action.lower()}"
-    st.markdown(f"<div class='signal-card'>Signal: <span class='{color_class}'>{current_action}</span></div>",
-                unsafe_allow_html=True)
+    st.markdown('<div class="window-header">📰 LATEST HEADLINES</div>', unsafe_allow_html=True)
+    for n in news_list[:5]:
+        styles.render_news_item(n)
 
-    st.markdown("### Market News")
-    for article in data_engine.get_market_news():
-        styles.render_news_item(article)
+with col_signals:
+    st.markdown('<div class="sidebar-header">📡 TRADING SIGNALS</div>', unsafe_allow_html=True)
+    status, color = trading_logic.generate_signal(latest)
 
-# 6. Simulation Loop
-time.sleep(config.REFRESH_RATE_SECONDS)
-st.session_state.current_step += 1
+    # Log trade if signal is not neutral
+    if status != "NEUTRAL":
+        if not st.session_state.trades or st.session_state.trades[-1]['Time'] != latest.name:
+            st.session_state.trades.append({"Time": latest.name, "Price": price, "Action": status})
+
+    styles.display_signal("ALGO RECOMMENDATION", status, "LIVE", color)
+    styles.display_signal("RSI (14)", f"{latest['RSI']:.1f}", "ACTIVE", "#BB86FC")
+    styles.display_signal("MACD", f"{latest['MACD']:.2f}", "TRENDING", "#00E5FF")
+
+# Loop
+time.sleep(config.REFRESH_RATE)
+st.session_state.step += 1
 st.rerun()
