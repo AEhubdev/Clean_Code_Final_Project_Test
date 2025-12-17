@@ -7,24 +7,24 @@ import config
 
 @st.cache_data(ttl=600)
 def get_gold_data(interval_name="1 Day"):
-    # Map display name to yfinance code
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
     period = "60d" if interval_code in ["15m", "1h"] else "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
-
-    if df.empty:
-        return pd.DataFrame(), 0.0, []
+    if df.empty: return pd.DataFrame(), 0.0, []
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # Technical Indicators
+    # --- BOLLINGER BANDS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['MA50'] = df['Close'].rolling(window=50).mean()
+    df['StdDev'] = df['Close'].rolling(window=20).std()
+    df['BB_U'] = df['MA20'] + (df['StdDev'] * 2)
+    df['BB_L'] = df['MA20'] - (df['StdDev'] * 2)
 
+    # --- RSI & MACD ---
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -39,17 +39,14 @@ def get_gold_data(interval_name="1 Day"):
     df['STOCH_K'] = (df['Close'] - df['Low'].rolling(14).min()) * 100 / (
                 df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10)
 
-    # --- REFINED SIGNAL LOGIC (Trend-Shift Detection) ---
-
-    # 1. Define the basic conditions
+    # --- FILTERED SIGNAL LOGIC (Trend-Shift Detection) ---
     buy_cond = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
     sell_cond = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
 
-    # 2. Only trigger on the FIRST bar where the condition is met (Prevents Clustering)
+    # Trigger only on the FIRST candle where condition becomes true
     df['Buy_Signal'] = buy_cond & ~buy_cond.shift(1).fillna(False)
     df['Sell_Signal'] = sell_cond & ~sell_cond.shift(1).fillna(False)
 
-    # News Fetch
     news_list = []
     try:
         search = yf.Search("Gold Price", news_count=8)
