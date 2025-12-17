@@ -7,20 +7,21 @@ from datetime import datetime
 
 
 @st.cache_data(ttl=600)
-def get_gold_terminal_data(timeframe_name=None):
-    # Fallback to the label defined in config
-    if timeframe_name is None:
-        timeframe_name = config.DEFAULT_INTERVAL_LABEL
-
-    # Get the code (e.g., "1mo") from the options dict
+def get_gold_terminal_data(timeframe_name="1 Day"):
+    # Ensure this matches your config keys exactly
     interval_code = config.TIMEFRAME_OPTIONS.get(timeframe_name, "1d")
+
     historical_df = fetch_market_data(interval_code)
 
+    # This check now works because historical_df is guaranteed to be a DataFrame
     if historical_df.empty:
         return pd.DataFrame(), 0.0, [], 0.0
 
     processed_df = apply_technical_indicators(historical_df)
-    current_price = float(processed_df['Close'].iloc[-1])
+
+    # Ensure we get a single float value
+    last_price = processed_df['Close'].iloc[-1]
+    current_price = float(last_price.iloc[0]) if hasattr(last_price, 'iloc') else float(last_price)
 
     ytd_start_price = fetch_ytd_start_price(current_price)
     market_news = fetch_market_news()
@@ -41,32 +42,38 @@ def fetch_market_data(interval_code):
         period = "max"
 
     def fetch_market_data(interval_code):
-        # ... (period selection logic) ...
+        """Downloads raw ticker data with appropriate history depth."""
+        if interval_code in ["1m", "2m", "5m"]:
+            period = "7d"
+        elif interval_code in ["15m", "30m", "60m", "1h"]:
+            period = "60d"
+        else:
+            period = "max"
+
         try:
+            # Added multi_level_index=False to prevent MultiIndex columns
             df = yf.download(
                 config.TICKER,
                 period=period,
                 interval=interval_code,
                 auto_adjust=False,
                 progress=False,
-                multi_level_index=False  # Force single-level columns
+                multi_level_index=False
             )
 
-            if df.empty:
+            # CRITICAL FIX: Ensure we always return a DataFrame, never None
+            if df is None or df.empty:
                 return pd.DataFrame()
 
-            # Rule S2.40: Safety check for remaining MultiIndex
+            # Handle yfinance MultiIndex if it persists
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            # Ensure column names are clean strings
-            df.columns = [str(col) for col in df.columns]
-
             return df.ffill().dropna()
-        except Exception:
-            return pd.DataFrame()
 
-
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+            return pd.DataFrame()  # Return empty DF so .empty check works
 def apply_technical_indicators(df):
     """
     Calculates statistical indicators.
