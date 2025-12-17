@@ -16,13 +16,13 @@ def calculate_trend(y):
 
 
 # --- LIVE OVERVIEW FRAGMENT ---
-# This updates the top metrics and sidebar signals every 1 minute
 @st.fragment(run_every="1m")
 def render_live_overview():
-    # Fetch fresh 1-day data for the header metrics
+    # Fetch fresh 1-day data for the header metrics (Live update)
     df_base, price_now, news_list, ytd_start_price = data_engine.get_gold_data("1 Day")
     metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start_price)
 
+    # 1. LIVE HEADER
     st.title("🏆 Gold Multi-Timeframe Terminal")
     cols = st.columns(5)
     cols[0].metric("Live Gold", f"${price_now:,.2f}")
@@ -32,10 +32,11 @@ def render_live_overview():
     styles.colored_metric(cols[4], "Volatility", f"{metrics[3]:.2f}%", metrics[3], is_vol=True)
     st.divider()
 
+    # 2. MAIN LAYOUT
     col_charts, col_sidebar = st.columns([0.72, 0.28])
 
     with col_charts:
-        # We pass the index for "1 Month" (index 4 in your config) as default
+        # Default index set to 4 (1 Month) as requested
         render_window("PRICE ACTION", "price", "p1", default_idx=4)
         render_window("VOLUME", "volume", "v1", default_idx=4)
         render_window("RSI", "rsi", "r1", default_idx=4)
@@ -44,31 +45,36 @@ def render_live_overview():
     with col_sidebar:
         st.markdown("### 🚦 Signal Center")
 
-        # Use the 1-day data for the primary signal logic
         latest = df_base.iloc[-1]
         status, color = trading_logic.evaluate_status(latest)
 
-        # This function handles the HTML rendering itself
+        # FIXED: Explicitly call the component to render HTML properly
         styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
 
+        st.markdown("---")
         c1, c2 = st.columns(2)
         r_val = latest['RSI']
         r_color = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
         c1.markdown(
-            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_color}"><small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
+            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_color}">'
+            f'<small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
             unsafe_allow_html=True)
 
         m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
         m_color = "green" if m_dir == "UP" else "red"
         c2.markdown(
-            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}"><small style="color:gray">MACD</small><br><strong style="font-size:18px; color:{m_color}">{m_dir}</strong></div>',
+            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}">'
+            f'<small style="color:gray">MACD</small><br><strong style="font-size:18px; color:{m_color}">{m_dir}</strong></div>',
             unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         sk, sd = latest['Stoch_K'], latest['Stoch_D']
         s_col = "green" if sk > sd else "red"
         st.markdown(
-            f'<div style="background:#1e2130; padding:12px; border-radius:5px;"><div style="display:flex; justify-content:space-between"><span style="color:gray">Stoch (K/D)</span><span style="color:{s_col}; font-weight:bold">{"Bullish" if sk > sd else "Bearish"}</span></div><div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div></div>',
+            f'<div style="background:#1e2130; padding:12px; border-radius:5px;">'
+            f'<div style="display:flex; justify-content:space-between"><span style="color:gray">Stoch (K/D)</span>'
+            f'<span style="color:{s_col}; font-weight:bold">{"Bullish" if sk > sd else "Bearish"}</span></div>'
+            f'<div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div></div>',
             unsafe_allow_html=True)
 
         st.divider()
@@ -91,6 +97,7 @@ def render_window(title, chart_type, key_id, default_idx=2):
 
         tf = s_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()), index=default_idx, key=key_id,
                              label_visibility="collapsed")
+
         data, _, _, _ = data_engine.get_gold_data(tf)
         if data.empty: return st.warning("Data load error.")
 
@@ -107,6 +114,7 @@ def render_window(title, chart_type, key_id, default_idx=2):
             fig.add_trace(
                 go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
                                name="Price"))
+
             trend_vals = calculate_trend(data['Close'].values)
             fig.add_trace(go.Scatter(x=data.index, y=trend_vals, name="Trend Line",
                                      line=dict(color='orange', width=2, dash='dot')))
@@ -123,11 +131,13 @@ def render_window(title, chart_type, key_id, default_idx=2):
             v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(data['Close'], data['Open'])]
             fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors))
             fig.update_layout(height=180)
+
         elif chart_type == "rsi":
             fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC')))
             fig.add_hline(y=70, line_color="red", line_dash="dash")
             fig.add_hline(y=30, line_color="green", line_dash="dash")
             fig.update_layout(height=180, yaxis=dict(range=[0, 100]))
+
         elif chart_type == "macd":
             m_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
             fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors))
@@ -137,5 +147,5 @@ def render_window(title, chart_type, key_id, default_idx=2):
         st.plotly_chart(fig, use_container_width=True)
 
 
-# Start the live overview
+# Executing the terminal
 render_live_overview()
