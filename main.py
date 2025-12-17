@@ -8,7 +8,6 @@ styles.apply_custom_styles()
 
 
 def calculate_trend(y):
-    """Pure math linear regression to avoid Scipy errors"""
     x = np.arange(len(y))
     n = len(x)
     m = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (n * np.sum(x ** 2) - (np.sum(x) ** 2))
@@ -16,7 +15,6 @@ def calculate_trend(y):
     return m * x + b
 
 
-# Data Fetch
 df_base, price_now, news_list = data_engine.get_gold_data("1 Day")
 metrics = data_engine.calculate_metrics(price_now, df_base)
 
@@ -45,17 +43,23 @@ def render_window(title, chart_type, key_id):
 
         if chart_type == "price":
             # Bollinger Bands
-            fig.add_trace(go.Scatter(x=data.index, y=data['BB_U'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
-                                     name="Upper BB"))
-            fig.add_trace(go.Scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
-                                     fill='tonexty', fillcolor='rgba(173, 216, 230, 0.05)', name="Lower BB"))
+            fig.add_trace(
+                go.Scatter(x=data.index, y=data['BB_U'], line=dict(color='rgba(173, 216, 230, 0.15)', width=1),
+                           name="BB Upper"))
+            fig.add_trace(
+                go.Scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(173, 216, 230, 0.15)', width=1),
+                           fill='tonexty', fillcolor='rgba(173, 216, 230, 0.05)', name="BB Lower"))
+
+            # MA20 and MA50
+            fig.add_trace(go.Scatter(x=data.index, y=data['MA20'], line=dict(color='#00d4ff', width=1.5), name="MA20"))
+            fig.add_trace(go.Scatter(x=data.index, y=data['MA50'], line=dict(color='#ffea00', width=1.5), name="MA50"))
 
             # Candlesticks
             fig.add_trace(
                 go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
                                name="Price"))
 
-            # Trend Line (Calculated without scipy)
+            # Trend Line
             trend_vals = calculate_trend(data['Close'].values)
             fig.add_trace(
                 go.Scatter(x=data.index, y=trend_vals, name="Trend", line=dict(color='orange', width=2, dash='dot')))
@@ -69,17 +73,16 @@ def render_window(title, chart_type, key_id):
                                      marker=dict(symbol='triangle-down', size=12, color='#FF3131')))
             fig.update_layout(height=400, xaxis_rangeslider_visible=False)
 
+        # ... (rest of the charts remain the same as previous)
         elif chart_type == "volume":
             v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(data['Close'], data['Open'])]
             fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors))
             fig.update_layout(height=180)
-
         elif chart_type == "rsi":
             fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC')))
             fig.add_hline(y=70, line_color="red", line_dash="dash");
             fig.add_hline(y=30, line_color="green", line_dash="dash")
             fig.update_layout(height=180, yaxis=dict(range=[0, 100]))
-
         elif chart_type == "macd":
             m_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
             fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors))

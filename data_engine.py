@@ -16,8 +16,9 @@ def get_gold_data(interval_name="1 Day"):
 
     df = df.ffill().dropna()
 
-    # --- BOLLINGER BANDS ---
+    # --- MOVING AVERAGES & BOLLINGER BANDS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
+    df['MA50'] = df['Close'].rolling(window=50).mean()  # Added MA50
     df['StdDev'] = df['Close'].rolling(window=20).std()
     df['BB_U'] = df['MA20'] + (df['StdDev'] * 2)
     df['BB_L'] = df['MA20'] - (df['StdDev'] * 2)
@@ -49,6 +50,8 @@ def get_gold_data(interval_name="1 Day"):
 
     return df, float(df['Close'].iloc[-1]), news_list
 
+
+# (calculate_metrics function remains unchanged)
 
 def calculate_metrics(price, df_full):
     try:
