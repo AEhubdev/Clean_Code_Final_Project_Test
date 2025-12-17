@@ -94,10 +94,10 @@ def render_window(title, chart_type, key_id):
 
 
 with col_charts:
-    render_window("WINDOW 1: PRICE ACTION", "price", "p1")
-    render_window("WINDOW 2: VOLUME", "volume", "v1")
-    render_window("WINDOW 3: RSI", "rsi", "r1")
-    render_window("WINDOW 4: MACD", "macd", "m1")
+    render_window("PRICE ACTION", "price", "p1")
+    render_window("VOLUME", "volume", "v1")
+    render_window("RSI", "rsi", "r1")
+    render_window("MACD", "macd", "m1")
 
 with col_sidebar:
     st.markdown("### 🚦 Signal Center")
