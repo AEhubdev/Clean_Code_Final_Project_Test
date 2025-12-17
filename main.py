@@ -1,50 +1,69 @@
 import streamlit as st
 import plotly.graph_objects as go
-import data_engine, config, time
+import data_engine, trading_logic, time
 
-st.set_page_config(page_title="Gold Terminal 2025", layout="wide")
+st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
 
-# Get clean data
+# Custom CSS for that "Bloomberg" dark feel
+st.markdown("""
+    <style>
+    .metric-container { background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 5px solid gold; }
+    .signal-box { padding: 20px; border-radius: 10px; text-align: center; font-weight: bold; font-size: 24px; }
+    </style>
+""", unsafe_allow_html=True)
+
 df = data_engine.fetch_market_data()
-latest_price = float(df['Close'].iloc[-1])
+latest = df.iloc[-1]
+status, color = trading_logic.evaluate_signal(latest)
 
-# Header Metrics
-st.title(f"🏆 {config.ASSET_NAME} Advanced Terminal")
-st.subheader(f"Current Date: {df.index[-1].strftime('%Y-%m-%d')}")
+# --- OVERVIEW SECTION ---
+st.title("🏆 GOLD STRATEGIC TERMINAL")
+st.caption(f"Market Status: OPEN | Last Update: {df.index[-1].strftime('%Y-%m-%d %H:%M')}")
 
-col_m1, col_m2 = st.columns(2)
-col_m1.metric("Live Market Price", f"${latest_price:,.2f}")
-col_m2.metric("RSI (14D)", f"{df['RSI'].iloc[-1]:.2f}")
+m1, m2, m3, m4 = st.columns(4)
+with m1: st.metric("Live Price", f"${latest['Close']:,.2f}")
+with m2: st.metric("Daily Change", f"{((latest['Close'] - latest['Open']) / latest['Open'] * 100):+.2f}%")
+with m3: st.metric("RSI (14D)", f"{latest['RSI']:.1f}")
+with m4:
+    st.markdown(f'<div class="signal-box" style="background:{color}; color:white">{status}</div>',
+                unsafe_allow_html=True)
 
-# --- PANEL 1: PRICE & CANDLESTICKS ---
-st.markdown("#### 📈 Price Action & Moving Averages")
-fig_p = go.Figure()
-fig_p.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Gold"))
-fig_p.add_trace(go.Scatter(x=df.index, y=df['MA20'], name="MA20", line=dict(color='rgba(255, 255, 0, 0.7)')))
-fig_p.add_trace(go.Scatter(x=df.index, y=df['MA50'], name="MA50", line=dict(color='rgba(255, 0, 0, 0.7)')))
-fig_p.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, margin=dict(t=30, b=0))
-st.plotly_chart(fig_p, use_container_width=True)
+st.markdown("---")
 
-# --- PANEL 2: MACD WINDOW ---
-st.markdown("#### 🚀 MACD Momentum")
-fig_m = go.Figure()
-# Histogram
-colors = ['green' if x >= 0 else 'red' for x in df['MACD_Hist']]
-fig_m.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name="Histogram", marker_color=colors))
-# MACD & Signal Lines
-fig_m.add_trace(go.Scatter(x=df.index, y=df['MACD'], name="MACD", line=dict(color='cyan', width=2)))
-fig_m.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name="Signal", line=dict(color='orange', dash='dot')))
-fig_m.update_layout(template="plotly_dark", height=250, margin=dict(t=0, b=0))
-st.plotly_chart(fig_m, use_container_width=True)
+# --- MARKET CHART SECTION ---
+col_charts, col_info = st.columns([0.7, 0.3])
 
-# --- PANEL 3: RSI WINDOW ---
-st.markdown("#### 📉 RSI Oscillator")
-fig_r = go.Figure()
-fig_r.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='magenta', width=2)))
-fig_r.add_hline(y=70, line_dash="dash", line_color="red")
-fig_r.add_hline(y=30, line_dash="dash", line_color="green")
-fig_r.update_layout(template="plotly_dark", height=180, yaxis=dict(range=[0, 100]), margin=dict(t=0, b=0))
-st.plotly_chart(fig_r, use_container_width=True)
+with col_charts:
+    # Main Chart with Signals
+    fig = go.Figure()
+    fig.add_trace(
+        go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price"))
 
-time.sleep(config.REFRESH_RATE)
+    # Add SMA Lines
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='cyan', width=1), name="MA20"))
+
+    # Add Signal Diamonds (The logic that was missing)
+    buys = df[df.apply(lambda x: trading_logic.evaluate_signal(x)[0] == "BUY", axis=1)]
+    sells = df[df.apply(lambda x: trading_logic.evaluate_signal(x)[0] == "SELL", axis=1)]
+
+    fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.99, mode='markers',
+                             marker=dict(symbol='diamond', color='#00FF41', size=10), name="BUY SIGNAL"))
+    fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.01, mode='markers',
+                             marker=dict(symbol='diamond', color='#FF3131', size=10), name="SELL SIGNAL"))
+
+    fig.update_layout(template="plotly_dark", height=500, xaxis_rangeslider_visible=False,
+                      margin=dict(l=0, r=0, t=0, b=0))
+    st.plotly_chart(fig, use_container_width=True)
+
+with col_info:
+    st.markdown("### 📊 Market Context")
+    st.write(f"**52W High:** ${df['High'].max():,.2f}")
+    st.write(f"**52W Low:** ${df['Low'].min():,.2f}")
+    st.write(f"**Current Trend:** {'Bullish' if latest['MA20'] > latest['MA50'] else 'Bearish'}")
+
+    st.markdown("### 🔔 Signal Log")
+    log_df = df.apply(lambda x: trading_logic.evaluate_signal(x)[0], axis=1).to_frame(name="Action")
+    st.dataframe(log_df[log_df['Action'] != "NEUTRAL"].tail(5), use_container_width=True)
+
+time.sleep(30)
 st.rerun()
