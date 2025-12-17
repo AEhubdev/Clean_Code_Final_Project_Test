@@ -14,6 +14,10 @@ def apply_custom_css():
         </style>
         """, unsafe_allow_html=True)
 
+def render_news_item(article):
+    """Renders a single news headline."""
+    st.markdown(f'<a href="{article["link"]}" target="_blank" class="news-link">● {article["title"]}</a>', unsafe_allow_html=True)
+
 def colored_metric(col, label, val_text, delta_val, is_vol=False):
     color = "#FFA500" if is_vol else ("#00FF41" if delta_val > 0 else "#FF3131")
     col.markdown(f"**{label}**")
