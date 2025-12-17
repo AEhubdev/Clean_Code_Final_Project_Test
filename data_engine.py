@@ -7,16 +7,15 @@ import config
 
 @st.cache_data(ttl=3600)
 def fetch_market_data():
-    # Fetching historical data to ensure indicators (MA50) are pre-calculated
     df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
 
-    # FIX: Flatten MultiIndex columns (prevents the AttributeError)
+    # --- THE CRITICAL FIX FOR ATTRIBUTE ERROR ---
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # --- INDICATORS ---
+    # Indicators
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     std = df['Close'].rolling(window=20).std()
@@ -26,7 +25,7 @@ def fetch_market_data():
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+    df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
 
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
