@@ -33,7 +33,16 @@ col_charts, col_sidebar = st.columns([0.72, 0.28])
 def render_window(title, chart_type, key_id):
     with st.container(border=True):
         h_col, s_col = st.columns([0.7, 0.3])
-        h_col.markdown(f"**{title}**")
+
+        # Identification Logic in Header
+        if chart_type == "price":
+            h_col.markdown(f"**{title}** <br> <span style='font-size:11px; color:gray;'>"
+                           "<span style='color:#00d4ff'>● MA20</span> | "
+                           "<span style='color:#ffea00'>● MA50</span> | "
+                           "<span style='color:orange'>-- Trend</span></span>", unsafe_allow_html=True)
+        else:
+            h_col.markdown(f"**{title}**")
+
         tf = s_col.selectbox("TF", list(config.TIMEFRAME_OPTIONS.keys()), index=2, key=key_id,
                              label_visibility="collapsed")
 
@@ -62,33 +71,47 @@ def render_window(title, chart_type, key_id):
             # Trend Line
             trend_vals = calculate_trend(data['Close'].values)
             fig.add_trace(
-                go.Scatter(x=data.index, y=trend_vals, name="Trend", line=dict(color='orange', width=2, dash='dot')))
+                go.Scatter(x=data.index, y=trend_vals, name="Trend Line",
+                           line=dict(color='orange', width=2, dash='dot')))
 
             # Signals
             buys = data[data['Buy_Signal']];
             sells = data[data['Sell_Signal']]
             fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.998, mode='markers',
-                                     marker=dict(symbol='triangle-up', size=12, color='#00FF41')))
+                                     marker=dict(symbol='triangle-up', size=12, color='#00FF41'), name="Buy Signal"))
             fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.002, mode='markers',
-                                     marker=dict(symbol='triangle-down', size=12, color='#FF3131')))
-            fig.update_layout(height=400, xaxis_rangeslider_visible=False)
+                                     marker=dict(symbol='triangle-down', size=12, color='#FF3131'), name="Sell Signal"))
 
-        # ... (rest of the charts remain the same as previous)
+            # SHOW LEGEND only for Price Chart
+            fig.update_layout(
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=10)
+                ),
+                height=400,
+                xaxis_rangeslider_visible=False
+            )
+
         elif chart_type == "volume":
             v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(data['Close'], data['Open'])]
-            fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors))
-            fig.update_layout(height=180)
+            fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors, name="Volume"))
+            fig.update_layout(height=180, showlegend=False)
         elif chart_type == "rsi":
-            fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC')))
+            fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC'), name="RSI"))
             fig.add_hline(y=70, line_color="red", line_dash="dash");
             fig.add_hline(y=30, line_color="green", line_dash="dash")
-            fig.update_layout(height=180, yaxis=dict(range=[0, 100]))
+            fig.update_layout(height=180, yaxis=dict(range=[0, 100]), showlegend=False)
         elif chart_type == "macd":
             m_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
-            fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors))
-            fig.update_layout(height=180)
+            fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors, name="MACD Hist"))
+            fig.update_layout(height=180, showlegend=False)
 
-        fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5), showlegend=False)
+        fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5))
         st.plotly_chart(fig, use_container_width=True)
 
 
