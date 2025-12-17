@@ -1,0 +1,14 @@
+# Asset Settings
+TICKER_SYMBOL = "GC=F"
+ASSET_NAME = "Gold"
+
+# Technical Indicator Settings
+RSI_PERIOD = 14
+RSI_OVERBOUGHT = 70
+RSI_OVERSOLD = 30
+MA_SHORT_WINDOW = 20
+MA_LONG_WINDOW = 50
+
+# Simulation Settings
+REFRESH_RATE_SECONDS = 2
+INITIAL_DATA_START_DATE = "2024-09-01"
