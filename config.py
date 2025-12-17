@@ -1,7 +1,7 @@
 # Asset Settings
 TICKER_SYMBOL = "GC=F"
 ASSET_NAME = "Gold"
-DATA_START_DATE = "2024-01-01" # Fetching extra history for stable indicators
+DATA_START_DATE = "2025-01-01" # Fetching extra history for stable indicators
 
 # Technical Settings
 RSI_PERIOD = 14
