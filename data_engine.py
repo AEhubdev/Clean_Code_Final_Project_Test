@@ -8,7 +8,6 @@ import config
 @st.cache_data(ttl=60)
 def get_gold_data():
     df = yf.download(config.TICKER, start=config.START_DATE, auto_adjust=False)
-    if df.empty: return pd.DataFrame(), 0.0, pd.DataFrame(), []
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
@@ -22,8 +21,8 @@ def get_gold_data():
     df['BB_L'] = df['MA20'] - (std * 2)
 
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
 
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
@@ -34,27 +33,24 @@ def get_gold_data():
     df['STOCH_K'] = (df['Close'] - df['Low'].rolling(14).min()) * 100 / (
                 df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10)
 
-    # TRADING SIGNALS (Used for Chart Markers)
-    df['Buy_Signal'] = (df['RSI'] < 30) & (df['MACD_Hist'] > -0.5)
-    df['Sell_Signal'] = (df['RSI'] > 70) & (df['MACD_Hist'] < 0.5)
+    # --- SIGNAL LOGIC FOR CHART ---
+    df['Buy_Signal'] = (df['RSI'] < 35)
+    df['Sell_Signal'] = (df['RSI'] > 65)
 
-    # News
-    news_list = []
     try:
-        search = yf.Search("Gold Price", news_count=6)
-        news_list = search.news
+        search = yf.Search("Gold Market", news_count=8)
+        news_data = search.news
     except:
-        pass
+        news_data = []
 
-    display_df = df[df.index >= config.CHART_START].copy()
-    return display_df, float(df['Close'].iloc[-1]), df, news_list
+    return df[df.index >= config.CHART_START], float(df['Close'].iloc[-1]), df, news_data
 
 
 def calculate_metrics(price, df_full):
-    try:
-        w_c = ((price - df_full['Close'].iloc[-5]) / df_full['Close'].iloc[-5]) * 100
-        m_c = ((price - df_full['Close'].iloc[-21]) / df_full['Close'].iloc[-21]) * 100
-        vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
-        return w_c, m_c, vol
-    except:
-        return 0.0, 0.0, 0.0
+    w_c = ((price - float(df_full['Close'].iloc[-5])) / float(df_full['Close'].iloc[-5])) * 100
+    m_c = ((price - float(df_full['Close'].iloc[-21])) / float(df_full['Close'].iloc[-21])) * 100
+    y_df = df_full[df_full.index >= "2025-01-01"]
+    y_s = y_df['Close'].iloc[0] if not y_df.empty else price
+    y_c = ((price - y_s) / y_s) * 100
+    vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
+    return w_c, m_c, y_c, vol

@@ -4,14 +4,27 @@ def apply_custom_styles():
     st.markdown("""
         <style>
         .main { background-color: #0E1117; }
-        .sidebar-header { color: gold; font-size: 24px; font-weight: bold; border-bottom: 2px solid #363A45; padding-bottom: 10px; margin-bottom: 20px; }
-        .window-header { color: #808495; font-size: 14px; font-weight: bold; text-transform: uppercase; margin-top: 20px; border-left: 3px solid gold; padding-left: 10px; }
-        .signal-card { background: #1E222D; padding: 15px; border-radius: 8px; border: 1px solid #363A45; margin-bottom: 10px; }
-        .news-item { font-size: 14px; padding: 8px 0; border-bottom: 1px solid #1E222D; }
+        [data-testid="stMetricLabel"] { color: #808495 !important; }
+        [data-testid="stMetricValue"] { color: white !important; }
+        .sidebar-header { color: white !important; font-size: 28px !important; font-weight: bold; text-align: center; margin-bottom: 20px; border-bottom: 2px solid gold; padding-bottom: 10px; }
+        .signal-container { background-color: #1E222D; padding: 20px; border-radius: 10px; border: 1px solid #363A45; margin-bottom: 15px; }
+        .window-header { color: white !important; font-size: 22px !important; font-weight: bold; margin-top: 20px; border-bottom: 1px solid #363A45; padding-bottom: 5px; }
+        .news-link { color: #FFFFFF !important; text-decoration: none !important; display: block; padding: 8px; border-bottom: 1px solid #363A45; margin-bottom: 5px; font-size: 15px; }
+        .news-link:hover { background-color: #1E222D; color: #FFD700 !important; }
         </style>
         """, unsafe_allow_html=True)
 
-def metric_row(c1, c2, c3, p, w, m):
-    c1.metric("Live Gold", f"${p:,.2f}", f"{w:+.2f}%")
-    c2.metric("Weekly Change", f"{w:+.2f}%")
-    c3.metric("Monthly Change", f"{m:+.2f}%")
+def colored_metric(col, label, val_text, delta_val, is_vol=False):
+    color = "#FFA500" if is_vol else ("#00FF41" if delta_val > 0 else "#FF3131")
+    col.markdown(f"**{label}**")
+    col.markdown(f"<h2 style='color:{color}; margin-top:-15px; font-weight:bold;'>{val_text}</h2>", unsafe_allow_html=True)
+
+def display_signal(label, value, status, color):
+    st.markdown(f"""
+        <div class="signal-container">
+            <div style='color:white; font-size:16px; font-weight:bold; margin-bottom:5px;'>{label}</div>
+            <div style='display:flex; justify-content:space-between; align-items:center;'>
+                <span style='color:white; font-size:26px; font-weight:bold;'>{value}</span>
+                <span style='background-color:{color}; color:black; padding:2px 10px; border-radius:5px; font-weight:bold; font-size:12px;'>{status}</span>
+            </div>
+        </div>""", unsafe_allow_html=True)
