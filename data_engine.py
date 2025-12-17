@@ -6,16 +6,12 @@ import config
 
 
 @st.cache_data(ttl=60)
-def get_market_data():
-    # Fetching extra data to ensure indicators (MA50) have enough lead time
-    df = yf.download(config.TICKER_SYMBOL, start=config.INITIAL_DATA_START_DATE)
+def fetch_market_data():
+    df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-    # Clean any NaN values that break calculations
-    df = df.ffill().dropna()
-
-    # Indicators
+    # Calculate indicators on the full dataset
     df['MA20'] = df['Close'].rolling(window=config.MA_SHORT).mean()
     df['MA50'] = df['Close'].rolling(window=config.MA_LONG).mean()
 
@@ -28,31 +24,30 @@ def get_market_data():
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = ema12 - ema26
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['STOCH_K'] = (df['Close'] - df['Low'].rolling(14).min()) * 100 / (
+                df['High'].rolling(14).max() - df['Low'].rolling(14).min())
 
     try:
         news = yf.Search(config.ASSET_NAME, news_count=8).news
     except:
         news = []
 
-    return df, news
+    return df.ffill().dropna(), news
 
 
-def calculate_top_metrics(current_df):
-    """Calculates metrics using only the available 'simulated' window."""
-    if len(current_df) < 2:
-        return 0, 0, 0, 0
+def get_simulation_metrics(current_idx, df_full):
+    """Calculates metrics relative to the current step in time."""
+    curr_price = float(df_full['Close'].iloc[current_idx])
 
-    current_price = float(current_df['Close'].iloc[-1])
+    # Week change (5 trading days ago)
+    prev_w = float(df_full['Close'].iloc[max(0, current_idx - 5)])
+    w_c = ((curr_price - prev_w) / prev_w) * 100
 
-    # Weekly (5 steps back)
-    prev_w = float(current_df['Close'].iloc[-5]) if len(current_df) > 5 else float(current_df['Close'].iloc[0])
-    w_c = ((current_price - prev_w) / prev_w) * 100
+    # Month change (21 trading days ago)
+    prev_m = float(df_full['Close'].iloc[max(0, current_idx - 21)])
+    m_c = ((curr_price - prev_m) / prev_m) * 100
 
-    # Monthly (21 steps back)
-    prev_m = float(current_df['Close'].iloc[-21]) if len(current_df) > 21 else float(current_df['Close'].iloc[0])
-    m_c = ((current_price - prev_m) / prev_m) * 100
+    # Annualized Volatility
+    vol = np.log(df_full['Close'] / df_full['Close'].shift(1)).std() * np.sqrt(252) * 100
 
-    # Annual Volatility
-    vol = np.log(current_df['Close'] / current_df['Close'].shift(1)).std() * np.sqrt(252) * 100
-
-    return current_price, w_c, m_m_c, vol  # Note: Using placeholder for YTD to keep it simple and stable
+    return curr_price, w_c, m_c, vol

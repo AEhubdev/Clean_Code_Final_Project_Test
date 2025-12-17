@@ -8,14 +8,13 @@ def apply_custom_css():
         [data-testid="stMetricValue"] { color: white !important; }
         .sidebar-header { color: white !important; font-size: 28px !important; font-weight: bold; text-align: center; }
         .signal-container { background-color: #1E222D; padding: 20px; border-radius: 10px; border: 1px solid #363A45; margin-bottom: 15px; }
-        .window-header { color: white !important; font-size: 22px !important; font-weight: bold; border-bottom: 1px solid #363A45; }
+        .window-header { color: white !important; font-size: 22px !important; font-weight: bold; border-bottom: 1px solid #363A45; margin-top: 20px; }
         .news-link { color: #FFFFFF !important; text-decoration: none !important; display: block; padding: 8px; border-bottom: 1px solid #363A45; font-size: 14px; }
-        .news-link:hover { color: #FFD700 !important; }
+        .news-link:hover { color: #FFD700 !important; background-color: #1E222D; }
         </style>
         """, unsafe_allow_html=True)
 
 def render_news_item(article):
-    """This is the function line 53 was missing!"""
     st.markdown(f'<a href="{article["link"]}" target="_blank" class="news-link">● {article["title"]}</a>', unsafe_allow_html=True)
 
 def colored_metric(col, label, val_text, delta_val, is_vol=False):
