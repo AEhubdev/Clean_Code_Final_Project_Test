@@ -41,39 +41,30 @@ def fetch_market_data(interval_code):
     else:
         period = "max"
 
-    def fetch_market_data(interval_code):
-        """Downloads raw ticker data with appropriate history depth."""
-        if interval_code in ["1m", "2m", "5m"]:
-            period = "7d"
-        elif interval_code in ["15m", "30m", "60m", "1h"]:
-            period = "60d"
-        else:
-            period = "max"
+    try:
+        df = yf.download(
+            config.TICKER,
+            period=period,
+            interval=interval_code,
+            auto_adjust=False,
+            progress=False,
+            multi_level_index=False  # Crucial for newer yfinance versions
+        )
 
-        try:
-            # Added multi_level_index=False to prevent MultiIndex columns
-            df = yf.download(
-                config.TICKER,
-                period=period,
-                interval=interval_code,
-                auto_adjust=False,
-                progress=False,
-                multi_level_index=False
-            )
+        # Ensure we return a DataFrame, not None
+        if df is None or df.empty:
+            return pd.DataFrame()
 
-            # CRITICAL FIX: Ensure we always return a DataFrame, never None
-            if df is None or df.empty:
-                return pd.DataFrame()
+        # Flatten columns if yfinance returns a MultiIndex (Ticker name on top)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
 
-            # Handle yfinance MultiIndex if it persists
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
+        return df.ffill().dropna()
 
-            return df.ffill().dropna()
-
-        except Exception as e:
-            print(f"Error fetching data: {e}")
-            return pd.DataFrame()  # Return empty DF so .empty check works
+    except Exception as e:
+        # Log the error locally but don't crash the app
+        print(f"yfinance Download Error: {e}")
+        return pd.DataFrame()  # Return empty DF so .empty check works
 def apply_technical_indicators(df):
     """
     Calculates statistical indicators.
