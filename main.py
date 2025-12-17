@@ -127,19 +127,7 @@ with col_sidebar:
         f'<div style="background:#1e2130; padding:12px; border-radius:5px;"><div style="display:flex; justify-content:space-between"><span style="color:gray">Stoch (K/D)</span><span style="color:{s_col}; font-weight:bold">{"Bullish" if sk > sd else "Bearish"}</span></div><div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div></div>',
         unsafe_allow_html=True)
 
-    # 4. Trend Strength (Strictly Text)
-    st.markdown("<br>", unsafe_allow_html=True)
-    adx_val = latest['ADX']
-    trend_status = "STRONG" if adx_val >= 25 else "WEAK"
-    trend_color = "#00FF41" if adx_val >= 25 else "#FF3131"
 
-    st.markdown(f"""
-        <div style="background:#1e2130; padding:12px; border-radius:5px; border-top: 2px solid {trend_color}">
-            <small style="color:gray">TREND STRENGTH</small><br>
-            <strong style="font-size:20px; color:{trend_color}">{trend_status}</strong>
-            <span style="float:right; color:gray; font-size:12px">ADX: {adx_val:.1f}</span>
-        </div>
-    """, unsafe_allow_html=True)
 
     st.divider()
     st.markdown("### Market News")

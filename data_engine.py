@@ -42,20 +42,6 @@ def get_gold_data(interval_name="1 Day"):
     df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
     df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
 
-    # --- ADX ---
-    alpha = 1 / 14
-    df['UpM'] = df['High'].diff(); df['DoM'] = -df['Low'].diff()
-    df['Plus_DM'] = np.where((df['UpM'] > df['DoM']) & (df['UpM'] > 0), df['UpM'], 0)
-    df['Minus_DM'] = np.where((df['DoM'] > df['UpM']) & (df['DoM'] > 0), df['DoM'], 0)
-    tr1 = df['High'] - df['Low']
-    tr2 = abs(df['High'] - df['Close'].shift(1)); tr3 = abs(df['Low'] - df['Close'].shift(1))
-    df['TR'] = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    df['ATR'] = df['TR'].ewm(alpha=alpha, adjust=False).mean()
-    df['Plus_DI'] = 100 * (df['Plus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
-    df['Minus_DI'] = 100 * (df['Minus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
-    dx = 100 * (abs(df['Plus_DI'] - df['Minus_DI']) / (df['Plus_DI'] + df['Minus_DI'] + 1e-10))
-    df['ADX'] = dx.ewm(alpha=alpha, adjust=False).mean()
-
     # --- SIGNALS ---
     buy_cond = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
     sell_cond = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
