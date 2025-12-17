@@ -8,7 +8,7 @@ def apply_custom_css():
         [data-testid="stMetricValue"] { color: white !important; }
         .sidebar-header { color: white !important; font-size: 28px !important; font-weight: bold; text-align: center; }
         .signal-container { background-color: #1E222D; padding: 20px; border-radius: 10px; border: 1px solid #363A45; margin-bottom: 15px; }
-        .window-header { color: white !important; font-size: 22px !important; font-weight: bold; border-bottom: 1px solid #363A45; margin-top: 20px; }
+        .window-header { color: white !important; font-size: 22px !important; font-weight: bold; border-bottom: 1px solid #363A45; margin-top: 20px; padding-bottom: 5px; }
         .news-link { color: #FFFFFF !important; text-decoration: none !important; display: block; padding: 8px; border-bottom: 1px solid #363A45; font-size: 14px; }
         .news-link:hover { color: #FFD700 !important; background-color: #1E222D; }
         </style>

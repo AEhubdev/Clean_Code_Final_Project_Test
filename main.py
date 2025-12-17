@@ -7,24 +7,19 @@ import config, styles, data_engine, trading_logic
 st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
 styles.apply_custom_css()
 
-# --- INITIALIZATION ---
-# main.py (Initialization section)
-
-# 1. Fetch Data First
+# --- DATA FETCHING ---
 df_full, news_list = data_engine.fetch_market_data()
 
-# 2. Hardened Initialization
+# --- INITIALIZATION (FIXED FOR LIVE PRICE) ---
 if 'step' not in st.session_state:
-    # Anchor to the LATEST row (Today's Price)
+    # Anchor to the VERY LAST row to show current price ($4300+)
     st.session_state.step = len(df_full) - 1
     st.session_state.trades = []
 
-# 3. Handle the Loop
-# If the simulation hits the end, stay at the latest data or reset
+# Loop safety
 if st.session_state.step >= len(df_full):
     st.session_state.step = len(df_full) - 1
 
-# Proceed with current_row...
 current_row = df_full.iloc[st.session_state.step]
 price, w_perc, m_perc, vol_val = data_engine.get_metrics_at_point(st.session_state.step, df_full)
 
@@ -49,51 +44,44 @@ with col_charts:
     # 1. MAIN PRICE CHART
     st.markdown('<div class="window-header">📈 PRICE ACTION & VOLATILITY BANDS</div>', unsafe_allow_html=True)
     fig_p = go.Figure()
-    fig_p.add_trace(go.Candlestick(x=df_full.index, open=df_full['Open'], high=df_full['High'], low=df_full['Low'],
-                                   close=df_full['Close'], name="Price"))
-    fig_p.add_trace(go.Scatter(x=df_full.index, y=df_full['MA20'], name="MA20", line=dict(color='#FFEB3B', width=1)))
-    fig_p.add_trace(go.Scatter(x=df_full.index, y=df_full['MA50'], name="MA50", line=dict(color='#E91E63', width=1)))
-    fig_p.add_trace(go.Scatter(x=df_full.index, y=df_full['BB_U'], name="BB Upper",
+    # History limited to simulation current step
+    hist_df = df_full.iloc[:st.session_state.step + 1]
+
+    fig_p.add_trace(go.Candlestick(x=hist_df.index, open=hist_df['Open'], high=hist_df['High'],
+                                   low=hist_df['Low'], close=hist_df['Close'], name="Price"))
+    fig_p.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MA20'], name="MA20", line=dict(color='#FFEB3B', width=1)))
+    fig_p.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MA50'], name="MA50", line=dict(color='#E91E63', width=1)))
+    fig_p.add_trace(go.Scatter(x=hist_df.index, y=hist_df['BB_U'], name="BB Upper",
                                line=dict(color='rgba(173, 216, 230, 0.2)', dash='dash')))
-    fig_p.add_trace(go.Scatter(x=df_full.index, y=df_full['BB_L'], name="BB Lower",
+    fig_p.add_trace(go.Scatter(x=hist_df.index, y=hist_df['BB_L'], name="BB Lower",
                                line=dict(color='rgba(173, 216, 230, 0.2)', dash='dash'), fill='tonexty'))
 
-    if st.session_state.trades:
-        tdf = pd.DataFrame(st.session_state.trades)
-        fig_p.add_trace(go.Scatter(x=tdf['Time'], y=tdf['Price'], mode='markers',
-                                   marker=dict(symbol='diamond', size=10, color='white'), name="Signals"))
-
-    fig_p.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="#FFD700")
-    fig_p.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, margin=dict(t=5, b=5))
+    fig_p.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False, margin=dict(t=5, b=5))
     st.plotly_chart(fig_p, use_container_width=True)
 
     # 2. VOLUME HISTORY
     st.markdown('<div class="window-header">📊 TRADING VOLUME HISTORY</div>', unsafe_allow_html=True)
-    v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(df_full['Close'], df_full['Open'])]
-    fig_v = go.Figure(go.Bar(x=df_full.index, y=df_full['Volume'], marker_color=v_colors, name="Volume"))
-    fig_v.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="#FFD700")
-    fig_v.update_layout(template="plotly_dark", height=200, margin=dict(t=5, b=5))
+    v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(hist_df['Close'], hist_df['Open'])]
+    fig_v = go.Figure(go.Bar(x=hist_df.index, y=hist_df['Volume'], marker_color=v_colors, name="Volume"))
+    fig_v.update_layout(template="plotly_dark", height=180, margin=dict(t=5, b=5))
     st.plotly_chart(fig_v, use_container_width=True)
 
     # 3. RSI HISTORY
     st.markdown('<div class="window-header">📉 RELATIVE STRENGTH (RSI) HISTORY</div>', unsafe_allow_html=True)
     fig_r = go.Figure()
-    fig_r.add_trace(go.Scatter(x=df_full.index, y=df_full['RSI'], line=dict(color='#BB86FC', width=2), name="RSI"))
+    fig_r.add_trace(go.Scatter(x=hist_df.index, y=hist_df['RSI'], line=dict(color='#BB86FC', width=2), name="RSI"))
     fig_r.add_hline(y=70, line_dash="dash", line_color="red")
     fig_r.add_hline(y=30, line_dash="dash", line_color="green")
-    fig_r.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="#FFD700")
-    fig_r.update_layout(template="plotly_dark", height=200, yaxis=dict(range=[0, 100]), margin=dict(t=5, b=5))
+    fig_r.update_layout(template="plotly_dark", height=180, yaxis=dict(range=[0, 100]), margin=dict(t=5, b=5))
     st.plotly_chart(fig_r, use_container_width=True)
 
     # 4. MACD MOMENTUM HISTORY
     st.markdown('<div class="window-header">🚀 MACD MOMENTUM & HISTOGRAM</div>', unsafe_allow_html=True)
     fig_m = go.Figure()
-    h_colors = ['#00FF41' if val >= 0 else '#FF3131' for val in df_full['MACD_Hist']]
-    fig_m.add_trace(go.Bar(x=df_full.index, y=df_full['MACD_Hist'], name="Histogram", marker_color=h_colors))
-    fig_m.add_trace(go.Scatter(x=df_full.index, y=df_full['MACD'], name="MACD", line=dict(color='#00E5FF')))
-    fig_m.add_trace(go.Scatter(x=df_full.index, y=df_full['MACD_Signal'], name="Signal", line=dict(color='#FFCA28')))
-    fig_m.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="#FFD700")
-    fig_m.update_layout(template="plotly_dark", height=250, margin=dict(t=5, b=5))
+    h_colors = ['#00FF41' if val >= 0 else '#FF3131' for val in hist_df['MACD_Hist']]
+    fig_m.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACD_Hist'], name="Histogram", marker_color=h_colors))
+    fig_m.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD'], name="MACD", line=dict(color='#00E5FF')))
+    fig_m.update_layout(template="plotly_dark", height=200, margin=dict(t=5, b=5))
     st.plotly_chart(fig_m, use_container_width=True)
 
     # NEWS
@@ -107,12 +95,12 @@ with col_signals:
     styles.display_signal("RSI (14)", f"{current_row['RSI']:.1f}", "ACTIVE", "#BB86FC")
     styles.display_signal("MACD", f"{current_row['MACD']:.2f}", "STABLE", "#00E5FF")
 
+    st.write(f"**Data Date:** {current_row.name.date()}")
+
     st.markdown("**Executed Signals Log**")
     if st.session_state.trades:
         st.dataframe(pd.DataFrame(st.session_state.trades).tail(10), use_container_width=True)
 
 # SIMULATION PAUSE
-st.info(f"Updated at: {current_row.name}. Refreshing in {config.REFRESH_RATE}s...")
 time.sleep(config.REFRESH_RATE)
-st.session_state.step += 1
 st.rerun()

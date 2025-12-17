@@ -1,7 +1,7 @@
-# config.py
+# Asset Settings
 TICKER_SYMBOL = "GC=F"
 ASSET_NAME = "Gold"
-DATA_START_DATE = "2025-01-01" # More recent start
+DATA_START_DATE = "2024-01-01"
 
 # Technical Settings
 MA_SHORT = 20
@@ -12,4 +12,4 @@ RSI_OVERSOLD = 30
 
 # Simulation Pace
 REFRESH_RATE = 120.0
-INITIAL_STEP = 50 # Start at least 50 days in to see MA50
+INITIAL_STEP = 100

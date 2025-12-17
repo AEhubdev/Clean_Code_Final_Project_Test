@@ -7,12 +7,12 @@ import config
 
 @st.cache_data(ttl=60)
 def fetch_market_data():
-    # Fetching extra data to ensure indicators like MA50 have enough lead time
     df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
+
+    # Critical fix for yfinance multi-index format
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-    # Fill gaps to prevent chart breaks
     df = df.ffill().dropna()
 
     # --- INDICATORS ---
@@ -28,7 +28,7 @@ def fetch_market_data():
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+    df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
 
     # MACD
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
