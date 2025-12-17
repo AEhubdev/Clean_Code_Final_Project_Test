@@ -1,5 +1,11 @@
 TICKER = "GC=F"
-START_DATE = "2024-12-01"
-CHART_START = "2025-01-01"
-MA_FAST = 20
-MA_SLOW = 50
+# Default settings
+DEFAULT_INTERVAL = "1d"
+# Map display names to yfinance intervals
+TIMEFRAME_OPTIONS = {
+    "15 Minutes": "15m",
+    "1 Hour": "1h",
+    "1 Day": "1d",
+    "1 Week": "1wk",
+    "1 Month": "1mo"
+}
