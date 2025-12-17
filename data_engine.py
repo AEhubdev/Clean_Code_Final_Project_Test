@@ -43,6 +43,7 @@ def get_gold_data(interval_name="1 Day"):
     df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
 
 
+
     # --- SIGNALS ---
     buy_cond = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
     sell_cond = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
