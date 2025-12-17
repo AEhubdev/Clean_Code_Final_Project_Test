@@ -8,8 +8,11 @@ st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
 styles.apply_custom_css()
 
 # --- INITIALIZATION ---
+# --- Replace your current initialization with this ---
 if 'step' not in st.session_state:
-    st.session_state.step = config.INITIAL_STEP
+    # This automatically finds the latest index (today's data)
+    df_temp, _ = data_engine.fetch_market_data()
+    st.session_state.step = len(df_temp) - 1
     st.session_state.trades = []
 
 df_full, news_list = data_engine.fetch_market_data()
