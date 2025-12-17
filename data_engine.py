@@ -12,9 +12,7 @@ def get_gold_data(interval_name="1 Day"):
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
     if df.empty: return pd.DataFrame(), 0.0, []
-
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
@@ -36,14 +34,9 @@ def get_gold_data(interval_name="1 Day"):
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
-    df['STOCH_K'] = (df['Close'] - df['Low'].rolling(14).min()) * 100 / (
-                df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10)
-
-    # --- FILTERED SIGNAL LOGIC (Trend-Shift Detection) ---
+    # --- SIGNALS ---
     buy_cond = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
     sell_cond = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
-
-    # Trigger only on the FIRST candle where condition becomes true
     df['Buy_Signal'] = buy_cond & ~buy_cond.shift(1).fillna(False)
     df['Sell_Signal'] = sell_cond & ~sell_cond.shift(1).fillna(False)
 
@@ -61,10 +54,7 @@ def calculate_metrics(price, df_full):
     try:
         w_c = ((price - df_full['Close'].iloc[-5]) / df_full['Close'].iloc[-5]) * 100
         m_c = ((price - df_full['Close'].iloc[-21]) / df_full['Close'].iloc[-21]) * 100
-        y_df = df_full[df_full.index >= "2025-01-01"]
-        y_s = y_df['Close'].iloc[0] if not y_df.empty else price
-        y_c = ((price - y_s) / y_s) * 100
         vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
-        return w_c, m_c, y_c, vol
+        return w_c, m_c, 0.0, vol
     except:
         return 0.0, 0.0, 0.0, 0.0
