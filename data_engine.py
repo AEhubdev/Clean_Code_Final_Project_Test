@@ -39,9 +39,15 @@ def get_gold_data(interval_name="1 Day"):
     df['STOCH_K'] = (df['Close'] - df['Low'].rolling(14).min()) * 100 / (
                 df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10)
 
-    # Signal Logic
-    df['Buy_Signal'] = (df['RSI'] < 35) & (df['MACD_Hist'] > df['MACD_Hist'].shift(1))
-    df['Sell_Signal'] = (df['RSI'] > 65) & (df['MACD_Hist'] < df['MACD_Hist'].shift(1))
+    # --- REFINED SIGNAL LOGIC (Trend-Shift Detection) ---
+
+    # 1. Define the basic conditions
+    buy_cond = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
+    sell_cond = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
+
+    # 2. Only trigger on the FIRST bar where the condition is met (Prevents Clustering)
+    df['Buy_Signal'] = buy_cond & ~buy_cond.shift(1).fillna(False)
+    df['Sell_Signal'] = sell_cond & ~sell_cond.shift(1).fillna(False)
 
     # News Fetch
     news_list = []
