@@ -5,7 +5,7 @@ import streamlit as st
 import config
 
 
-@st.cache_data(ttl=3600)  # Increased TTL since we refresh less often now
+@st.cache_data(ttl=3600)
 def fetch_market_data():
     df = yf.download(config.TICKER_SYMBOL, start=config.DATA_START_DATE)
     if isinstance(df.columns, pd.MultiIndex):
@@ -33,11 +33,10 @@ def fetch_market_data():
 
 
 def get_metrics_at_point(idx, df_full):
-    """Calculates metrics for the specific simulation point."""
     row = df_full.iloc[idx]
     price = float(row['Close'])
 
-    # Calculate changes relative to this specific 'idx'
+    # Calculate relative changes
     prev_w = float(df_full['Close'].iloc[max(0, idx - 5)])
     w_c = ((price - prev_w) / prev_w) * 100
 
@@ -45,5 +44,4 @@ def get_metrics_at_point(idx, df_full):
     m_c = ((price - prev_m) / prev_m) * 100
 
     vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
-
     return price, w_c, m_c, vol

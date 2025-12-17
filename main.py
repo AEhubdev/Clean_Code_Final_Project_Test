@@ -8,20 +8,18 @@ st.set_page_config(page_title="Gold Terminal Elite", layout="wide")
 styles.apply_custom_css()
 
 if 'step' not in st.session_state:
-    st.session_state.step = 100
-    st.session_state.trades = []
+    st.session_state.step = config.INITIAL_STEP
 
 df_full, news_list = data_engine.fetch_market_data()
 
-# Simulation point
+# Reset simulation if end reached
 if st.session_state.step >= len(df_full):
-    st.session_state.step = 100
+    st.session_state.step = config.INITIAL_STEP
 
-latest_idx = st.session_state.step
-current_row = df_full.iloc[latest_idx]
-price, w_perc, m_perc, vol = data_engine.get_metrics_at_point(latest_idx, df_full)
+current_row = df_full.iloc[st.session_state.step]
+price, w_perc, m_perc, vol = data_engine.get_metrics_at_point(st.session_state.step, df_full)
 
-# Dashboard
+# Top Metrics Row
 st.title(f"🏆 {config.ASSET_NAME} Market Overview")
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Live Price", f"${price:,.2f}")
@@ -33,20 +31,17 @@ st.divider()
 col_charts, col_signals = st.columns([0.7, 0.3])
 
 with col_charts:
-    st.markdown('<div class="window-header">MARKET TREND (Simulation Mode)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="window-header">MARKET TREND (Simulation)</div>', unsafe_allow_html=True)
     fig = go.Figure()
-
-    # SHOW ALL DATA
-    fig.add_trace(go.Candlestick(x=df_full.index, open=df_full['Open'], high=df_full['High'], low=df_full['Low'],
-                                 close=df_full['Close'], name="Full History"))
-
-    # Vertical line indicating "NOW" in the simulation
-    fig.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="white")
-
-    fig.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False)
+    # Candlestick chart with full data visibility
+    fig.add_trace(go.Candlestick(x=df_full.index, open=df_full['Open'], high=df_full['High'],
+                                 low=df_full['Low'], close=df_full['Close'], name="Market Data"))
+    # Vertical line for the 'Current' simulation point
+    fig.add_vline(x=current_row.name, line_width=2, line_dash="dash", line_color="#FFD700")
+    fig.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, margin=dict(t=0, b=0))
     st.plotly_chart(fig, use_container_width=True)
 
-    # News section
+    st.markdown('<div class="window-header">📰 MARKET HEADLINES</div>', unsafe_allow_html=True)
     for n in news_list[:5]:
         styles.render_news_item(n)
 
@@ -55,11 +50,10 @@ with col_signals:
     status, color = trading_logic.evaluate_signal(current_row)
     styles.display_signal("ALGO RECOMMENDATION", status, "LIVE", color)
     styles.display_signal("RSI (14)", f"{current_row['RSI']:.1f}", "ACTIVE", "#BB86FC")
-    styles.display_signal("MACD", f"{current_row['MACD']:.2f}", "STABLE", "#00E5FF")
+    styles.display_signal("MACD", f"{current_row['MACD']:.2f}", "TRENDING", "#00E5FF")
 
-# Timer display so you know when the next 2-min update is coming
-st.caption(f"Next update in {config.REFRESH_RATE}s... Current Index: {latest_idx}")
-
+# Simulation logic
+st.info(f"Simulation active. Updating every 2 minutes. Current Date in Feed: {current_row.name.date()}")
 time.sleep(config.REFRESH_RATE)
 st.session_state.step += 1
 st.rerun()
