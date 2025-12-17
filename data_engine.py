@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import config
-
+from datetime import datetime
 
 @st.cache_data(ttl=600)
 def get_gold_data(interval_name="1 Day"):
@@ -11,14 +11,14 @@ def get_gold_data(interval_name="1 Day"):
     period = "60d" if interval_code in ["15m", "1h"] else "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
-    if df.empty: return pd.DataFrame(), 0.0, []
+    if df.empty: return pd.DataFrame(), 0.0, [], 0.0
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
     # --- MOVING AVERAGES & BOLLINGER BANDS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['MA50'] = df['Close'].rolling(window=50).mean()  # Added MA50
+    df['MA50'] = df['Close'].rolling(window=50).mean()
     df['StdDev'] = df['Close'].rolling(window=20).std()
     df['BB_U'] = df['MA20'] + (df['StdDev'] * 2)
     df['BB_L'] = df['MA20'] - (df['StdDev'] * 2)
@@ -35,28 +35,22 @@ def get_gold_data(interval_name="1 Day"):
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
-    # --- STOCHASTIC OSCILLATOR (Ctochastik) ---
+    # --- STOCHASTIC ---
     k_period, d_period = 14, 3
     df['Low_Min'] = df['Low'].rolling(window=k_period).min()
     df['High_Max'] = df['High'].rolling(window=k_period).max()
     df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
     df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
 
-    # --- TREND STRENGTH (ADX) --
-    # Directional Movement
-    df['UpM'] = df['High'].diff()
-    df['DoM'] = -df['Low'].diff()
+    # --- ADX ---
+    alpha = 1 / 14
+    df['UpM'] = df['High'].diff(); df['DoM'] = -df['Low'].diff()
     df['Plus_DM'] = np.where((df['UpM'] > df['DoM']) & (df['UpM'] > 0), df['UpM'], 0)
     df['Minus_DM'] = np.where((df['DoM'] > df['UpM']) & (df['DoM'] > 0), df['DoM'], 0)
-
-    # Wilder's Smoothing for ATR
-    alpha = 1 / 14
     tr1 = df['High'] - df['Low']
-    tr2 = abs(df['High'] - df['Close'].shift(1))
-    tr3 = abs(df['Low'] - df['Close'].shift(1))
+    tr2 = abs(df['High'] - df['Close'].shift(1)); tr3 = abs(df['Low'] - df['Close'].shift(1))
     df['TR'] = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     df['ATR'] = df['TR'].ewm(alpha=alpha, adjust=False).mean()
-
     df['Plus_DI'] = 100 * (df['Plus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
     df['Minus_DI'] = 100 * (df['Minus_DM'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
     dx = 100 * (abs(df['Plus_DI'] - df['Minus_DI']) / (df['Plus_DI'] + df['Minus_DI'] + 1e-10))
@@ -68,23 +62,24 @@ def get_gold_data(interval_name="1 Day"):
     df['Buy_Signal'] = buy_cond & ~buy_cond.shift(1).fillna(False)
     df['Sell_Signal'] = sell_cond & ~sell_cond.shift(1).fillna(False)
 
+    # --- YTD START PRICE ---
+    y_start = datetime(datetime.now().year, 1, 1).strftime('%Y-%m-%d')
+    ytd_data = yf.download(config.TICKER, start=y_start, progress=False)
+    ytd_start_price = ytd_data['Close'].iloc[0] if not ytd_data.empty else df['Close'].iloc[0]
+
     news_list = []
     try:
         search = yf.Search("Gold Price", news_count=8)
         news_list = search.news
-    except:
-        pass
+    except: pass
 
-    return df, float(df['Close'].iloc[-1]), news_list
+    return df, float(df['Close'].iloc[-1]), news_list, float(ytd_start_price)
 
-
-# (calculate_metrics function remains unchanged)
-
-def calculate_metrics(price, df_full):
+def calculate_metrics(price, df_full, ytd_start):
     try:
         w_c = ((price - df_full['Close'].iloc[-5]) / df_full['Close'].iloc[-5]) * 100
         m_c = ((price - df_full['Close'].iloc[-21]) / df_full['Close'].iloc[-21]) * 100
+        ytd_c = ((price - ytd_start) / ytd_start) * 100
         vol = df_full['Close'].pct_change().std() * np.sqrt(252) * 100
-        return w_c, m_c, 0.0, vol
-    except:
-        return 0.0, 0.0, 0.0, 0.0
+        return w_c, m_c, ytd_c, vol
+    except: return 0.0, 0.0, 0.0, 0.0
