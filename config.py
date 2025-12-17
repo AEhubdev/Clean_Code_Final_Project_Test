@@ -4,9 +4,6 @@ RSI_OVERSOLD = 30
 ADX_STRONG_TREND = 25
 STOCH_K_PERIOD = 14
 STOCH_D_PERIOD = 3
-
-TICKER = "GC=F"
-# config.py
 TICKER = "GC=F"
 
 # Add all the intervals you want to appear in your dropdowns here

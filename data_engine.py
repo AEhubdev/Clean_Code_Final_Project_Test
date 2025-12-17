@@ -7,13 +7,19 @@ from datetime import datetime
 
 
 @st.cache_data(ttl=600)
-def get_gold_terminal_data(timeframe_name="1 Day"):
+def get_gold_terminal_data(timeframe_name=None):  # Set default to None
     """
-    Orchestrates data retrieval and processing for the main terminal.
-    Follows Rule S2.34: Each function focuses on one objective.
+    Orchestrates data retrieval.
+    Now uses DEFAULT_INTERVAL from config if no name is provided.
     """
+    # If no timeframe is passed (like in the sidebar/metrics call), use the config default
+    if timeframe_name is None:
+        timeframe_name = config.DEFAULT_INTERVAL_LABEL
+
     interval_code = config.TIMEFRAME_OPTIONS.get(timeframe_name, "1d")
     historical_df = fetch_market_data(interval_code)
+
+    # ... rest of your function remains the same ...
 
     # Now this check will succeed because historical_df is guaranteed to be a DataFrame
     if historical_df.empty:
