@@ -40,6 +40,29 @@ def render_live_overview():
         latest = df_base.iloc[-1]
         status, color = trading_logic.evaluate_status(latest)
         styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
+
+        st.markdown("---")
+        # --- DETAILED SIDEBAR METRICS ---
+        c1, c2 = st.columns(2)
+        r_val = latest['RSI']
+        r_col = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
+        c1.markdown(
+            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_col}"><small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
+            unsafe_allow_html=True)
+
+        m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
+        m_color = "green" if m_dir == "UP" else "red"
+        c2.markdown(
+            f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}"><small style="color:gray">MACD</small><br><strong style="font-size:18px; color:{m_color}">{m_dir}</strong></div>',
+            unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        sk, sd = latest['Stoch_K'], latest['Stoch_D']
+        s_col = "green" if sk > sd else "red"
+        st.markdown(
+            f'<div style="background:#1e2130; padding:12px; border-radius:5px;"><div style="display:flex; justify-content:space-between"><span style="color:gray">Stoch (K/D)</span><span style="color:{s_col}; font-weight:bold">{"Bullish" if sk > sd else "Bearish"}</span></div><div style="font-size:20px; font-weight:bold">{sk:.0f} / {sd:.0f}</div></div>',
+            unsafe_allow_html=True)
+
         st.divider()
         st.markdown("### Market News")
         for n in news_list[:5]:
@@ -57,52 +80,59 @@ def render_window(title, chart_type, key_id, default_idx=2):
         lookback = 100 if tf in ["15m", "1h"] else 250
         data = full_df.tail(lookback)
 
-        if data.empty: return st.warning("Waiting for Data...")
+        if data.empty: return st.warning("Data load error.")
 
         fig = go.Figure()
 
         if chart_type == "price":
-            # Indicators
+            # 1. Background Layers (Trend Line)
+            try:
+                trend = calculate_trend(data['Close'].values)
+                fig.add_trace(
+                    go.Scatter(x=data.index, y=trend, line=dict(color='orange', width=2, dash='dot'), name="Trend"))
+            except:
+                pass
+
+            # 2. Moving Averages & BB
             fig.add_trace(go.Scatter(x=data.index, y=data['MA20'], line=dict(color='#00d4ff', width=1.5), name="MA20"))
             fig.add_trace(go.Scatter(x=data.index, y=data['MA50'], line=dict(color='#ffea00', width=1.5), name="MA50"))
+            fig.add_trace(go.Scatter(x=data.index, y=data['BB_U'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
+                                     name="BB Up"))
+            fig.add_trace(go.Scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
+                                     fill='tonexty', name="BB Low"))
 
-            # Main Candles
+            # 3. Candlesticks
             fig.add_trace(
                 go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
                                name="Price"))
 
-            # --- SIGNALS ---
-            # Filter for rows where signals are True
+            # 4. SIGNALS (High Visibility)
             buys = data[data['Buy_Signal'] == True]
             sells = data[data['Sell_Signal'] == True]
 
-            fig.add_trace(go.Scatter(
-                x=buys.index, y=buys['Low'] * 0.985, mode='markers',
-                marker=dict(symbol='triangle-up', size=15, color='#00FF41', line=dict(width=1, color='white')),
-                name="BUY"
-            ))
-            fig.add_trace(go.Scatter(
-                x=sells.index, y=sells['High'] * 1.015, mode='markers',
-                marker=dict(symbol='triangle-down', size=15, color='#FF3131', line=dict(width=1, color='white')),
-                name="SELL"
-            ))
+            fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.985, mode='markers',
+                                     marker=dict(symbol='triangle-up', size=15, color='#00FF41',
+                                                 line=dict(width=1, color='white')), name="Buy"))
+            fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.015, mode='markers',
+                                     marker=dict(symbol='triangle-down', size=15, color='#FF3131',
+                                                 line=dict(width=1, color='white')), name="Sell"))
 
             fig.update_layout(height=400, xaxis_rangeslider_visible=False)
 
         elif chart_type == "volume":
             v_colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(data['Close'], data['Open'])]
-            fig.add_bar(x=data.index, y=data['Volume'], marker_color=v_colors)
+            fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=v_colors))
             fig.update_layout(height=180)
 
         elif chart_type == "rsi":
-            fig.add_scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC'))
+            fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC')))
             fig.add_hline(y=70, line_color="red", line_dash="dash")
             fig.add_hline(y=30, line_color="green", line_dash="dash")
             fig.update_layout(height=180, yaxis=dict(range=[0, 100]))
 
         elif chart_type == "macd":
             m_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
-            fig.add_bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors)
+            fig.add_trace(go.Bar(x=data.index, y=data['MACD_Hist'], marker_color=m_colors))
             fig.update_layout(height=180)
 
         fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5), showlegend=False)
