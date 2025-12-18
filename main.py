@@ -42,7 +42,6 @@ def render_live_overview():
         styles.display_signal("PRIMARY ACTION", status, "LIVE", color)
 
         st.markdown("---")
-        # --- DETAILED SIDEBAR METRICS ---
         c1, c2 = st.columns(2)
         r_val = latest['RSI']
         r_col = "red" if r_val > 70 else "green" if r_val < 30 else "#00d4ff"
@@ -50,8 +49,7 @@ def render_live_overview():
             f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {r_col}"><small style="color:gray">RSI (14)</small><br><strong style="font-size:18px">{r_val:.1f}</strong></div>',
             unsafe_allow_html=True)
 
-        m_dir = "UP" if latest['MACD_Hist'] > 0 else "DOWN"
-        m_color = "green" if m_dir == "UP" else "red"
+        m_dir, m_color = ("UP", "green") if latest['MACD_Hist'] > 0 else ("DOWN", "red")
         c2.markdown(
             f'<div style="background:#1e2130; padding:10px; border-radius:5px; border-left:4px solid {m_color}"><small style="color:gray">MACD</small><br><strong style="font-size:18px; color:{m_color}">{m_dir}</strong></div>',
             unsafe_allow_html=True)
@@ -80,20 +78,18 @@ def render_window(title, chart_type, key_id, default_idx=2):
         lookback = 100 if tf in ["15m", "1h"] else 250
         data = full_df.tail(lookback)
 
-        if data.empty: return st.warning("Data load error.")
+        if data.empty: return st.warning("Data loading...")
 
         fig = go.Figure()
 
         if chart_type == "price":
-            # 1. Background Layers (Trend Line)
+            # 1. Indicators and Trend
             try:
                 trend = calculate_trend(data['Close'].values)
                 fig.add_trace(
                     go.Scatter(x=data.index, y=trend, line=dict(color='orange', width=2, dash='dot'), name="Trend"))
             except:
                 pass
-
-            # 2. Moving Averages & BB
             fig.add_trace(go.Scatter(x=data.index, y=data['MA20'], line=dict(color='#00d4ff', width=1.5), name="MA20"))
             fig.add_trace(go.Scatter(x=data.index, y=data['MA50'], line=dict(color='#ffea00', width=1.5), name="MA50"))
             fig.add_trace(go.Scatter(x=data.index, y=data['BB_U'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
@@ -101,21 +97,21 @@ def render_window(title, chart_type, key_id, default_idx=2):
             fig.add_trace(go.Scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(173, 216, 230, 0.2)', width=1),
                                      fill='tonexty', name="BB Low"))
 
-            # 3. Candlesticks
+            # 2. Main Price Candles
             fig.add_trace(
                 go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
                                name="Price"))
 
-            # 4. SIGNALS (High Visibility)
+            # 3. Signals (Filtered for visibility)
             buys = data[data['Buy_Signal'] == True]
             sells = data[data['Sell_Signal'] == True]
 
-            fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.985, mode='markers',
+            fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.98, mode='markers',
                                      marker=dict(symbol='triangle-up', size=15, color='#00FF41',
-                                                 line=dict(width=1, color='white')), name="Buy"))
-            fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.015, mode='markers',
+                                                 line=dict(width=1, color='white')), name="BUY"))
+            fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.02, mode='markers',
                                      marker=dict(symbol='triangle-down', size=15, color='#FF3131',
-                                                 line=dict(width=1, color='white')), name="Sell"))
+                                                 line=dict(width=1, color='white')), name="SELL"))
 
             fig.update_layout(height=400, xaxis_rangeslider_visible=False)
 

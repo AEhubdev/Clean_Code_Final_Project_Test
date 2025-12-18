@@ -10,23 +10,18 @@ from datetime import datetime
 def get_gold_data(interval_name="1 Day"):
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
 
-    # Dynamic period selection
-    if interval_code in ["15m", "1h"]:
-        period = "60d"
-    else:
-        period = "max"
+    # Fetch maximum history for 1D/1W/1M to ensure indicators have enough context
+    period = "60d" if interval_code in ["15m", "1h"] else "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
 
     if df.empty: return pd.DataFrame(), 0.0, [], 0.0
-
-    # Flatten MultiIndex for yfinance v0.2.x+
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # --- INDICATORS ---
+    # --- TECHNICAL INDICATORS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     df['StdDev'] = df['Close'].rolling(window=20).std()
@@ -50,15 +45,16 @@ def get_gold_data(interval_name="1 Day"):
     df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
     df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
 
-    # --- FIXED SIGNALS (The 35/65 threshold for better visibility) ---
+    # --- ADJUSTED SIGNAL LOGIC ---
+    # Loosened thresholds (35/65) for Monthly visibility and explicit boolean casting
     buy_cond = (df['RSI'] < 35) & (df['MACD_Hist'] > 0)
     sell_cond = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
 
-    # .astype(bool) prevents the TypeError on the shifted NaN values
+    # The fix: Ensure shift() doesn't create NaNs that break bitwise operations
     df['Buy_Signal'] = (buy_cond & ~buy_cond.shift(1).fillna(False).astype(bool))
     df['Sell_Signal'] = (sell_cond & ~sell_cond.shift(1).fillna(False).astype(bool))
 
-    # --- YTD Calculation ---
+    # --- YTD METRIC ---
     try:
         y_start = f"{datetime.now().year}-01-01"
         ytd_data = yf.download(config.TICKER, start=y_start, progress=False)
@@ -80,8 +76,7 @@ def get_gold_data(interval_name="1 Day"):
 
 def calculate_metrics(price, df_full, ytd_start):
     try:
-        w_idx = -5 if len(df_full) >= 5 else 0
-        m_idx = -21 if len(df_full) >= 21 else 0
+        w_idx, m_idx = (-5 if len(df_full) >= 5 else 0), (-21 if len(df_full) >= 21 else 0)
         w_c = ((price - df_full['Close'].iloc[w_idx]) / df_full['Close'].iloc[w_idx]) * 100
         m_c = ((price - df_full['Close'].iloc[m_idx]) / df_full['Close'].iloc[m_idx]) * 100
         ytd_c = ((price - ytd_start) / ytd_start) * 100
