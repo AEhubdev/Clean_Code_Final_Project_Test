@@ -20,7 +20,6 @@ def render_live_overview():
     metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start)
 
     # 2. CALCULATE DAY CHANGE (Current Price vs Yesterday's Close)
-    # iloc[-2] is the previous candle (yesterday)
     yesterday_close = df_base['Close'].iloc[-2]
     day_diff = price_now - yesterday_close
     day_pct = (day_diff / yesterday_close) * 100
@@ -29,8 +28,6 @@ def render_live_overview():
 
     # 3. TOP METRICS BAR
     m_cols = st.columns(5)
-
-    # This adds the green/red percentage change under the main price
     m_cols[0].metric(
         label="Live Gold",
         value=f"${price_now:,.2f}",
@@ -44,6 +41,7 @@ def render_live_overview():
 
     st.divider()
 
+    # 4. MAIN CHARTS AND SIDEBAR
     col_charts, col_sidebar = st.columns([0.72, 0.28])
 
     with col_charts:
@@ -79,9 +77,18 @@ def render_live_overview():
             f'<div style="background:#1e2130; padding:12px; border-radius:5px; border-left:4px solid {s_col}"><small>Stochastic (K/D)</small><br><strong>{sk:.0f} / {sd:.0f}</strong></div>',
             unsafe_allow_html=True)
 
-        st.divider()
-        st.markdown("### Market News")
-        for n in news_list: st.markdown(f"● [{n['title']}]({n['link']})")
+    # 5. NEWS BLOCK (Moved under all charts)
+    st.divider()
+    st.subheader("📰 Market News & Global Sentiment")
+
+    # Optional: Display news in a grid or simple list
+    if news_list:
+        for n in news_list[:8]:  # Display up to 8 news items
+            with st.container(border=True):
+                st.markdown(f"**{n['title']}**")
+                st.markdown(f" [Read Full Story]({n['link']})")
+    else:
+        st.write("No recent news found.")
 
 
 def render_window(title, chart_type, key_id, default_idx=2):
