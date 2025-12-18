@@ -6,15 +6,12 @@ import config
 from datetime import datetime
 
 
-@st.cache_data(ttl=60)  # Refreshes every minute
+@st.cache_data(ttl=60)
 def get_gold_data(interval_name="1 Day"):
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
 
-    # CRITICAL FIX: Intraday (15m, 1h) MUST use 60d period or Yahoo returns empty data
-    if interval_code in ["15m", "1h", "30m", "5m"]:
-        period = "60d"
-    else:
-        period = "max"
+    # FIX: Intraday (15m, 1h) only supports 60 days of history
+    period = "60d" if interval_code in ["15m", "1h"] else "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
 
@@ -42,37 +39,34 @@ def get_gold_data(interval_name="1 Day"):
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
-    k_p, d_p = 14, 3
-    df['Stoch_K'] = 100 * ((df['Close'] - df['Low'].rolling(k_p).min()) / (
-                df['High'].rolling(k_p).max() - df['Low'].rolling(k_p).min() + 1e-10))
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=d_p).mean()
+    df['Stoch_K'] = 100 * ((df['Close'] - df['Low'].rolling(14).min()) / (
+                df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10))
+    df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
-    # --- SIGNAL LOGIC (Adjusted for better visibility) ---
-    # Buy when RSI < 40 (Oversold territory) AND MACD Histogram turns positive
-    is_buy_zone = (df['RSI'] < 40) & (df['MACD_Hist'] > 0)
-    # Sell when RSI > 60 (Overbought territory) AND MACD Histogram turns negative
-    is_sell_zone = (df['RSI'] > 60) & (df['MACD_Hist'] < 0)
+    # --- THE SIGNAL LOGIC (MACD + RSI) ---
+    # Buy Call: RSI < 45 (captures pullbacks) AND MACD Histogram crosses above 0
+    buy_cond = (df['RSI'] < 45) & (df['MACD_Hist'] > 0)
+    # Sell Call: RSI > 65 AND MACD Histogram crosses below 0
+    sell_cond = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
 
-    # Only show the arrow on the EXACT candle the trend starts
-    df['Buy_Signal'] = (is_buy_zone & ~is_buy_zone.shift(1).fillna(False).astype(bool))
-    df['Sell_Signal'] = (is_sell_zone & ~is_sell_zone.shift(1).fillna(False).astype(bool))
+    df['Buy_Signal'] = (buy_cond & ~buy_cond.shift(1).fillna(False).astype(bool))
+    df['Sell_Signal'] = (sell_cond & ~sell_cond.shift(1).fillna(False).astype(bool))
 
-    # Live Price & News
-    current_price = float(df['Close'].iloc[-1])
+    # Live Metrics
+    price_now = float(df['Close'].iloc[-1])
+    try:
+        y_df = yf.download(config.TICKER, start=f"{datetime.now().year}-01-01", progress=False)
+        ytd_start = y_df['Close'].iloc[0]
+    except:
+        ytd_start = df['Close'].iloc[0]
+
     news = []
     try:
-        news = yf.Search("Gold Price", news_count=5).news
+        news = yf.Search("Gold Price", news_count=8).news
     except:
         pass
 
-    # YTD Start
-    try:
-        y_df = yf.download(config.TICKER, start=f"{datetime.now().year}-01-01", progress=False)
-        y_start = y_df['Close'].iloc[0]
-    except:
-        y_start = df['Close'].iloc[0]
-
-    return df, current_price, news, float(y_start)
+    return df, price_now, news, float(ytd_start)
 
 
 def calculate_metrics(price, df_full, ytd_start):
