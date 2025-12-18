@@ -7,78 +7,99 @@ from datetime import datetime
 
 
 @st.cache_data(ttl=60)
-def get_gold_data(interval_name="1 Day"):
-    interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
+def get_gold_market_data(timeframe_name="1 Day"):
+    interval_code = config.TIMEFRAME_OPTIONS.get(timeframe_name, "1d")
+    data_period = _determine_fetch_period(interval_code)
 
-    # DYNAMIC PERIOD SELECTOR - Fixes the Weekly & 15m Errors
+    gold_data = yf.download(config.TICKER, period=data_period, interval=interval_code, auto_adjust=False)
+
+    if gold_data.empty:
+        return pd.DataFrame(), 0.0, [], 0.0
+
+    # Handle MultiIndex and cleaning
+    if isinstance(gold_data.columns, pd.MultiIndex):
+        gold_data.columns = gold_data.columns.get_level_values(0)
+
+    gold_data = gold_data.ffill().dropna()
+    gold_data = _add_technical_indicators(gold_data)
+    gold_data = _generate_trading_signals(gold_data)
+
+    latest_price = float(gold_data['Close'].iloc[-1])
+    year_to_date_start = _fetch_ytd_start_price(gold_data)
+    market_news = _fetch_market_news()
+
+    return gold_data, latest_price, market_news, year_to_date_start
+
+
+def _determine_fetch_period(interval_code):
     if interval_code in ["15m", "1h"]:
-        period = "60d"
-    elif interval_code == "1wk":
-        period = "10y"  # Weekly works most reliably with a defined year range
-    else:
-        period = "max"
+        return "60d"
+    if interval_code == "1wk":
+        return "10y"
+    return "max"
 
-    df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
 
-    if df.empty: return pd.DataFrame(), 0.0, [], 0.0
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+def _add_technical_indicators(dataframe):
+    # Bollinger Bands
+    dataframe['MA20'] = dataframe['Close'].rolling(window=config.BB_PERIOD).mean()
+    dataframe['MA50'] = dataframe['Close'].rolling(window=50).mean()
+    standard_deviation = dataframe['Close'].rolling(window=config.BB_PERIOD).std()
+    dataframe['BB_U'] = dataframe['MA20'] + (standard_deviation * config.BB_STD_DEV)
+    dataframe['BB_L'] = dataframe['MA20'] - (standard_deviation * config.BB_STD_DEV)
 
-    df = df.ffill().dropna()
+    # RSI
+    price_delta = dataframe['Close'].diff()
+    average_gain = (price_delta.where(price_delta > 0, 0)).rolling(window=config.RSI_PERIOD).mean()
+    average_loss = (-price_delta.where(price_delta < 0, 0)).rolling(window=config.RSI_PERIOD).mean()
+    dataframe['RSI'] = 100 - (100 / (1 + (average_gain / (average_loss + 1e-10))))
 
-    # --- INDICATORS ---
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['MA50'] = df['Close'].rolling(window=50).mean()
-    df['StdDev'] = df['Close'].rolling(window=20).std()
-    df['BB_U'] = df['MA20'] + (df['StdDev'] * 2)
-    df['BB_L'] = df['MA20'] - (df['StdDev'] * 2)
+    # MACD
+    ema_fast = dataframe['Close'].ewm(span=12, adjust=False).mean()
+    ema_slow = dataframe['Close'].ewm(span=26, adjust=False).mean()
+    dataframe['MACD'] = ema_fast - ema_slow
+    dataframe['MACD_Signal'] = dataframe['MACD'].ewm(span=9, adjust=False).mean()
+    dataframe['MACD_Hist'] = dataframe['MACD'] - dataframe['MACD_Signal']
 
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
+    # Stochastic
+    low_min = dataframe['Low'].rolling(14).min()
+    high_max = dataframe['High'].rolling(14).max()
+    dataframe['Stoch_K'] = 100 * ((dataframe['Close'] - low_min) / (high_max - low_min + 1e-10))
+    dataframe['Stoch_D'] = dataframe['Stoch_K'].rolling(window=3).mean()
+    return dataframe
 
-    ema12 = df['Close'].ewm(span=12, adjust=False).mean()
-    ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = ema12 - ema26
-    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
-    df['Stoch_K'] = 100 * ((df['Close'] - df['Low'].rolling(14).min()) / (
-                df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10))
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
+def _generate_trading_signals(dataframe):
+    buy_condition = (dataframe['RSI'] < config.RSI_BUY_THRESHOLD) & (dataframe['MACD_Hist'] > 0)
+    sell_condition = (dataframe['RSI'] > config.RSI_SELL_THRESHOLD) & (dataframe['MACD_Hist'] < 0)
 
-    # --- SIGNALS (MACD + RSI) ---
-    buy_cond = (df['RSI'] < 45) & (df['MACD_Hist'] > 0)
-    sell_cond = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
+    # Boolean triggers to markers
+    dataframe['Buy_Signal'] = (buy_condition & ~buy_condition.shift(1).fillna(False))
+    dataframe['Sell_Signal'] = (sell_condition & ~sell_condition.shift(1).fillna(False))
+    return dataframe
 
-    df['Buy_Signal'] = (buy_cond & ~buy_cond.shift(1).fillna(False).astype(bool))
-    df['Sell_Signal'] = (sell_cond & ~sell_cond.shift(1).fillna(False).astype(bool))
 
-    price_now = float(df['Close'].iloc[-1])
-
-    # YTD Logic
+def _fetch_ytd_start_price(dataframe):
     try:
-        y_df = yf.download(config.TICKER, start=f"{datetime.now().year}-01-01", progress=False)
-        ytd_start = y_df['Close'].iloc[0]
+        current_year = datetime.now().year
+        ytd_data = yf.download(config.TICKER, start=f"{current_year}-01-01", progress=False)
+        return float(ytd_data['Close'].iloc[0])
     except:
-        ytd_start = df['Close'].iloc[0]
+        return float(dataframe['Close'].iloc[0])
 
-    news = []
+
+def _fetch_market_news():
     try:
-        news = yf.Search("Gold Price", news_count=5).news
+        return yf.Search("Gold Price", news_count=5).news
     except:
-        pass
-
-    return df, price_now, news, float(ytd_start)
+        return []
 
 
-def calculate_metrics(price, df_full, ytd_start):
+def calculate_performance_metrics(current_price, dataframe, ytd_start):
     try:
-        w_c = ((price - df_full['Close'].iloc[-5]) / df_full['Close'].iloc[-5]) * 100
-        m_c = ((price - df_full['Close'].iloc[-21]) / df_full['Close'].iloc[-21]) * 100
-        ytd_c = ((price - ytd_start) / ytd_start) * 100
-        vol = df_full['Close'].pct_change().tail(30).std() * np.sqrt(252) * 100
-        return w_c, m_c, ytd_c, vol
+        weekly_return = ((current_price - dataframe['Close'].iloc[-5]) / dataframe['Close'].iloc[-5]) * 100
+        monthly_return = ((current_price - dataframe['Close'].iloc[-21]) / dataframe['Close'].iloc[-21]) * 100
+        ytd_return = ((current_price - ytd_start) / ytd_start) * 100
+        volatility = dataframe['Close'].pct_change().tail(30).std() * np.sqrt(252) * 100
+        return weekly_return, monthly_return, ytd_return, volatility
     except:
         return 0.0, 0.0, 0.0, 0.0
