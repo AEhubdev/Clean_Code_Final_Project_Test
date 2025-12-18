@@ -9,8 +9,6 @@ from datetime import datetime
 @st.cache_data(ttl=600)
 def get_gold_data(interval_name="1 Day"):
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
-
-    # Fetch maximum history for 1D/1W/1M to ensure indicators have enough context
     period = "60d" if interval_code in ["15m", "1h"] else "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
@@ -21,7 +19,7 @@ def get_gold_data(interval_name="1 Day"):
 
     df = df.ffill().dropna()
 
-    # --- TECHNICAL INDICATORS ---
+    # --- INDICATORS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     df['StdDev'] = df['Close'].rolling(window=20).std()
@@ -35,39 +33,28 @@ def get_gold_data(interval_name="1 Day"):
 
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = ema12 - ema26
-    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
+    df['MACD_Hist'] = ema12 - ema26 - (ema12 - ema26).ewm(span=9, adjust=False).mean()
 
-    k_period, d_period = 14, 3
-    df['Low_Min'] = df['Low'].rolling(window=k_period).min()
-    df['High_Max'] = df['High'].rolling(window=k_period).max()
-    df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
+    # --- THE LOGIC FIX ---
+    # We define the state (is it overbought?) and then find the MOMENT it enters that state
+    is_overbought = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
+    is_oversold = (df['RSI'] < 35) & (df['MACD_Hist'] > 0)
 
-    # --- ADJUSTED SIGNAL LOGIC ---
-    # Loosened thresholds (35/65) for Monthly visibility and explicit boolean casting
-    buy_cond = (df['RSI'] < 35) & (df['MACD_Hist'] > 0)
-    sell_cond = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
+    # Only True on the first candle the condition is met
+    df['Buy_Signal'] = is_oversold & ~is_oversold.shift(1).fillna(False)
+    df['Sell_Signal'] = is_overbought & ~is_overbought.shift(1).fillna(False)
 
-    # The fix: Ensure shift() doesn't create NaNs that break bitwise operations
-    df['Buy_Signal'] = (buy_cond & ~buy_cond.shift(1).fillna(False).astype(bool))
-    df['Sell_Signal'] = (sell_cond & ~sell_cond.shift(1).fillna(False).astype(bool))
-
-    # --- YTD METRIC ---
+    # --- NEWS & YTD ---
     try:
         y_start = f"{datetime.now().year}-01-01"
         ytd_data = yf.download(config.TICKER, start=y_start, progress=False)
-        if isinstance(ytd_data.columns, pd.MultiIndex):
-            ytd_data.columns = ytd_data.columns.get_level_values(0)
         ytd_start_price = ytd_data['Close'].iloc[0] if not ytd_data.empty else df['Close'].iloc[0]
     except:
         ytd_start_price = df['Close'].iloc[0]
 
     news_list = []
     try:
-        search = yf.Search("Gold Price", news_count=8)
-        news_list = search.news
+        news_list = yf.Search("Gold Price", news_count=8).news
     except:
         pass
 
