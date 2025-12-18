@@ -10,8 +10,13 @@ from datetime import datetime
 def get_gold_data(interval_name="1 Day"):
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
 
-    # FIX: Intraday (15m, 1h) only supports 60 days of history
-    period = "60d" if interval_code in ["15m", "1h"] else "max"
+    # DYNAMIC PERIOD SELECTOR - Fixes the Weekly & 15m Errors
+    if interval_code in ["15m", "1h"]:
+        period = "60d"
+    elif interval_code == "1wk":
+        period = "10y"  # Weekly works most reliably with a defined year range
+    else:
+        period = "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
 
@@ -43,17 +48,16 @@ def get_gold_data(interval_name="1 Day"):
                 df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10))
     df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
-    # --- THE SIGNAL LOGIC (MACD + RSI) ---
-    # Buy Call: RSI < 45 (captures pullbacks) AND MACD Histogram crosses above 0
+    # --- SIGNALS (MACD + RSI) ---
     buy_cond = (df['RSI'] < 45) & (df['MACD_Hist'] > 0)
-    # Sell Call: RSI > 65 AND MACD Histogram crosses below 0
     sell_cond = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
 
     df['Buy_Signal'] = (buy_cond & ~buy_cond.shift(1).fillna(False).astype(bool))
     df['Sell_Signal'] = (sell_cond & ~sell_cond.shift(1).fillna(False).astype(bool))
 
-    # Live Metrics
     price_now = float(df['Close'].iloc[-1])
+
+    # YTD Logic
     try:
         y_df = yf.download(config.TICKER, start=f"{datetime.now().year}-01-01", progress=False)
         ytd_start = y_df['Close'].iloc[0]
@@ -62,7 +66,7 @@ def get_gold_data(interval_name="1 Day"):
 
     news = []
     try:
-        news = yf.Search("Gold Price", news_count=8).news
+        news = yf.Search("Gold Price", news_count=5).news
     except:
         pass
 
