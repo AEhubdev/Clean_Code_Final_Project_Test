@@ -8,29 +8,20 @@ from datetime import datetime
 
 @st.cache_data(ttl=600)
 def get_gold_data(interval_name="1 Day"):
-    # Map the readable names to yfinance codes
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
 
-    # DYNAMIC DATA EXPANSION:
-    # If using Intraday (15m, 1h), 60 days is plenty.
-    # If using Daily, Weekly, or Monthly, we pull 'max' to fill the chart properly.
-    if interval_code in ["15m", "1h"]:
-        period = "60d"
-    else:
-        period = "max"
+    # Ensure we have enough history to calculate 50-period indicators
+    period = "60d" if interval_code in ["15m", "1h"] else "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
 
     if df.empty: return pd.DataFrame(), 0.0, [], 0.0
-
-    # Flatten MultiIndex (Critical for yfinance v0.2.x+)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.ffill().dropna()
 
-    # --- CALCULATE INDICATORS ON THE FULL DATASET ---
-    # This ensures indicators have values even if we only show a small slice later
+    # --- Technical Indicators ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     df['StdDev'] = df['Close'].rolling(window=20).std()
@@ -48,24 +39,20 @@ def get_gold_data(interval_name="1 Day"):
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
-    k_period, d_period = 14, 3
-    df['Low_Min'] = df['Low'].rolling(window=k_period).min()
-    df['High_Max'] = df['High'].rolling(window=k_period).max()
-    df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=d_period).mean()
+    df['Stoch_K'] = 100 * ((df['Close'] - df['Low'].rolling(14).min()) / (
+                df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-10))
+    df['Stoch_D'] = df['Stoch_K'].rolling(3).mean()
 
-    # --- SIGNALS ---
-    buy_cond = (df['RSI'] < 30) & (df['MACD_Hist'] > 0)
-    sell_cond = (df['RSI'] > 70) & (df['MACD_Hist'] < 0)
-    df['Buy_Signal'] = buy_cond & ~buy_cond.shift(1).fillna(False)
-    df['Sell_Signal'] = sell_cond & ~sell_cond.shift(1).fillna(False)
+    # --- Optimized Signal Logic (Loose 35/65 for higher TF visibility) ---
+    buy_cond = (df['RSI'] < 35) & (df['MACD_Hist'] > 0)
+    sell_cond = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
+    df['Buy_Signal'] = (buy_cond & ~buy_cond.shift(1)).fillna(False)
+    df['Sell_Signal'] = (sell_cond & ~sell_cond.shift(1)).fillna(False)
 
-    # --- YTD START PRICE ---
+    # Metrics logic
     try:
         y_start = f"{datetime.now().year}-01-01"
         ytd_data = yf.download(config.TICKER, start=y_start, progress=False)
-        if isinstance(ytd_data.columns, pd.MultiIndex):
-            ytd_data.columns = ytd_data.columns.get_level_values(0)
         ytd_start_price = ytd_data['Close'].iloc[0] if not ytd_data.empty else df['Close'].iloc[0]
     except:
         ytd_start_price = df['Close'].iloc[0]
