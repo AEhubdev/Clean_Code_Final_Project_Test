@@ -30,7 +30,7 @@ def render_live_overview():
     col_charts, col_sidebar = st.columns([0.72, 0.28])
 
     with col_charts:
-        render_window("PRICE ACTION", "price", "p1", default_idx=4)  # Default to Daily
+        render_window("PRICE ACTION", "price", "p1", default_idx=4)
         render_window("VOLUME", "volume", "v1", default_idx=4)
         render_window("RSI", "rsi", "r1", default_idx=4)
         render_window("MACD", "macd", "m1", default_idx=4)
@@ -57,30 +57,36 @@ def render_window(title, chart_type, key_id, default_idx=2):
         lookback = 100 if tf in ["15m", "1h"] else 250
         data = full_df.tail(lookback)
 
-        if data.empty: return st.warning("Insufficient Data")
+        if data.empty: return st.warning("Waiting for Data...")
 
         fig = go.Figure()
 
         if chart_type == "price":
-            # 1. Background Indicators
+            # Indicators
             fig.add_trace(go.Scatter(x=data.index, y=data['MA20'], line=dict(color='#00d4ff', width=1.5), name="MA20"))
             fig.add_trace(go.Scatter(x=data.index, y=data['MA50'], line=dict(color='#ffea00', width=1.5), name="MA50"))
 
-            # 2. Price Candles
+            # Main Candles
             fig.add_trace(
                 go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
                                name="Price"))
 
-            # 3. Signals (Added LAST to be on TOP layer)
+            # --- SIGNALS ---
+            # Filter for rows where signals are True
             buys = data[data['Buy_Signal'] == True]
             sells = data[data['Sell_Signal'] == True]
 
-            fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.98, mode='markers',
-                                     marker=dict(symbol='triangle-up', size=14, color='#00FF41',
-                                                 line=dict(width=1, color='white')), name="Buy"))
-            fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.02, mode='markers',
-                                     marker=dict(symbol='triangle-down', size=14, color='#FF3131',
-                                                 line=dict(width=1, color='white')), name="Sell"))
+            fig.add_trace(go.Scatter(
+                x=buys.index, y=buys['Low'] * 0.985, mode='markers',
+                marker=dict(symbol='triangle-up', size=15, color='#00FF41', line=dict(width=1, color='white')),
+                name="BUY"
+            ))
+            fig.add_trace(go.Scatter(
+                x=sells.index, y=sells['High'] * 1.015, mode='markers',
+                marker=dict(symbol='triangle-down', size=15, color='#FF3131', line=dict(width=1, color='white')),
+                name="SELL"
+            ))
+
             fig.update_layout(height=400, xaxis_rangeslider_visible=False)
 
         elif chart_type == "volume":
