@@ -15,17 +15,33 @@ def calculate_trend(y):
 
 @st.fragment(run_every="1m")
 def render_live_overview():
+    # 1. FETCH DATA
     df_base, price_now, news_list, ytd_start = data_engine.get_gold_data("1 Day")
     metrics = data_engine.calculate_metrics(price_now, df_base, ytd_start)
 
+    # 2. CALCULATE DAY CHANGE (Current Price vs Yesterday's Close)
+    # iloc[-2] is the previous candle (yesterday)
+    yesterday_close = df_base['Close'].iloc[-2]
+    day_diff = price_now - yesterday_close
+    day_pct = (day_diff / yesterday_close) * 100
+
     st.title("🏆 Gold Multi-Timeframe Terminal")
 
+    # 3. TOP METRICS BAR
     m_cols = st.columns(5)
-    m_cols[0].metric("Live Gold", f"${price_now:,.2f}")
+
+    # This adds the green/red percentage change under the main price
+    m_cols[0].metric(
+        label="Live Gold",
+        value=f"${price_now:,.2f}",
+        delta=f"{day_pct:+.2f}% (Day)"
+    )
+
     styles.colored_metric(m_cols[1], "Weekly", f"{metrics[0]:+.2f}%", metrics[0])
     styles.colored_metric(m_cols[2], "Monthly", f"{metrics[1]:+.2f}%", metrics[1])
     styles.colored_metric(m_cols[3], "YTD", f"{metrics[2]:+.2f}%", metrics[2])
     styles.colored_metric(m_cols[4], "Volatility", f"{metrics[3]:.2f}%", metrics[3], is_vol=True)
+
     st.divider()
 
     col_charts, col_sidebar = st.columns([0.72, 0.28])
