@@ -6,10 +6,15 @@ import config
 from datetime import datetime
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=60)  # Refreshes every minute
 def get_gold_data(interval_name="1 Day"):
     interval_code = config.TIMEFRAME_OPTIONS.get(interval_name, "1d")
-    period = "60d" if interval_code in ["15m", "1h"] else "max"
+
+    # CRITICAL FIX: Intraday (15m, 1h) MUST use 60d period or Yahoo returns empty data
+    if interval_code in ["15m", "1h", "30m", "5m"]:
+        period = "60d"
+    else:
+        period = "max"
 
     df = yf.download(config.TICKER, period=period, interval=interval_code, auto_adjust=False)
 
@@ -19,7 +24,7 @@ def get_gold_data(interval_name="1 Day"):
 
     df = df.ffill().dropna()
 
-    # --- ALL INDICATORS RESTORED ---
+    # --- INDICATORS ---
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
     df['StdDev'] = df['Close'].rolling(window=20).std()
@@ -37,45 +42,43 @@ def get_gold_data(interval_name="1 Day"):
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
 
-    # Stochastic (K/D) Restored
     k_p, d_p = 14, 3
-    df['Low_Min'] = df['Low'].rolling(window=k_p).min()
-    df['High_Max'] = df['High'].rolling(window=k_p).max()
-    df['Stoch_K'] = 100 * ((df['Close'] - df['Low_Min']) / (df['High_Max'] - df['Low_Min'] + 1e-10))
+    df['Stoch_K'] = 100 * ((df['Close'] - df['Low'].rolling(k_p).min()) / (
+                df['High'].rolling(k_p).max() - df['Low'].rolling(k_p).min() + 1e-10))
     df['Stoch_D'] = df['Stoch_K'].rolling(window=d_p).mean()
 
-    # --- SIGNAL LOGIC (Fixing the TypeError & Sparse Signals) ---
-    # Loosened to 35/65 for better visibility on Monthly charts
-    is_ob = (df['RSI'] > 65) & (df['MACD_Hist'] < 0)
-    is_os = (df['RSI'] < 35) & (df['MACD_Hist'] > 0)
+    # --- SIGNAL LOGIC (Adjusted for better visibility) ---
+    # Buy when RSI < 40 (Oversold territory) AND MACD Histogram turns positive
+    is_buy_zone = (df['RSI'] < 40) & (df['MACD_Hist'] > 0)
+    # Sell when RSI > 60 (Overbought territory) AND MACD Histogram turns negative
+    is_sell_zone = (df['RSI'] > 60) & (df['MACD_Hist'] < 0)
 
-    # astype(bool) fix ensures shift() doesn't break the code
-    df['Buy_Signal'] = (is_os & ~is_os.shift(1).fillna(False).astype(bool))
-    df['Sell_Signal'] = (is_ob & ~is_ob.shift(1).fillna(False).astype(bool))
+    # Only show the arrow on the EXACT candle the trend starts
+    df['Buy_Signal'] = (is_buy_zone & ~is_buy_zone.shift(1).fillna(False).astype(bool))
+    df['Sell_Signal'] = (is_sell_zone & ~is_sell_zone.shift(1).fillna(False).astype(bool))
 
-    # YTD Data
-    try:
-        y_start = f"{datetime.now().year}-01-01"
-        y_df = yf.download(config.TICKER, start=y_start, progress=False)
-        if isinstance(y_df.columns, pd.MultiIndex): y_df.columns = y_df.columns.get_level_values(0)
-        ytd_start_price = y_df['Close'].iloc[0] if not y_df.empty else df['Close'].iloc[0]
-    except:
-        ytd_start_price = df['Close'].iloc[0]
-
+    # Live Price & News
+    current_price = float(df['Close'].iloc[-1])
     news = []
     try:
-        news = yf.Search("Gold Price", news_count=8).news
+        news = yf.Search("Gold Price", news_count=5).news
     except:
         pass
 
-    return df, float(df['Close'].iloc[-1]), news, float(ytd_start_price)
+    # YTD Start
+    try:
+        y_df = yf.download(config.TICKER, start=f"{datetime.now().year}-01-01", progress=False)
+        y_start = y_df['Close'].iloc[0]
+    except:
+        y_start = df['Close'].iloc[0]
+
+    return df, current_price, news, float(y_start)
 
 
 def calculate_metrics(price, df_full, ytd_start):
     try:
-        w_idx, m_idx = (-5 if len(df_full) >= 5 else 0), (-21 if len(df_full) >= 21 else 0)
-        w_c = ((price - df_full['Close'].iloc[w_idx]) / df_full['Close'].iloc[w_idx]) * 100
-        m_c = ((price - df_full['Close'].iloc[m_idx]) / df_full['Close'].iloc[m_idx]) * 100
+        w_c = ((price - df_full['Close'].iloc[-5]) / df_full['Close'].iloc[-5]) * 100
+        m_c = ((price - df_full['Close'].iloc[-21]) / df_full['Close'].iloc[-21]) * 100
         ytd_c = ((price - ytd_start) / ytd_start) * 100
         vol = df_full['Close'].pct_change().tail(30).std() * np.sqrt(252) * 100
         return w_c, m_c, ytd_c, vol
