@@ -64,42 +64,61 @@ def _add_technical_indicators(dataframe):
 
 
 def generate_ai_prediction(dataframe, forecast_periods=30):
-    """Predicts future prices using RSI, MACD, and Bollinger Bands as training features."""
-    # 1. Scope to the last 150 bars of the CURRENT timeframe to make it timeframe-aware
+    """Predicts future prices with Damping and Seamless Stitching to prevent 'weird' behavior."""
+    # 1. Scope and Clean Data
     df_window = dataframe.tail(150).copy()
-
     df_clean = df_window.dropna(subset=['RSI', 'MACD_Hist', 'BB_U', 'BB_L', 'Close']).copy()
-    if df_clean.empty: return pd.DataFrame()
+
+    if df_clean.empty:
+        return pd.DataFrame()
 
     features = ['RSI', 'MACD_Hist', 'BB_U', 'BB_L']
     X = df_clean[features].values
     y = df_clean['Close'].values
 
+    # 2. Train Model
     model = LinearRegression()
     model.fit(X, y)
 
-    # 2. Project using the most recent bar's characteristics
+    # 3. Generate Raw Predictions
     recent_features = df_clean[features].tail(forecast_periods).values
     if len(recent_features) < forecast_periods:
         recent_features = np.tile(df_clean[features].iloc[-1].values, (forecast_periods, 1))
 
-    future_preds = model.predict(recent_features)
+    raw_preds = model.predict(recent_features)
 
-    # 3. DYNAMIC TIME DELTA: This fixes the timeframe visual bug
+    # 4. FIX WEIRD JUMPS (Seamless Stitching)
+    last_live_price = float(df_clean['Close'].iloc[-1])
+    price_offset = last_live_price - raw_preds[0]
+    aligned_preds = raw_preds + price_offset
+
+    # 5. FIX DRAMATIC MOVES (Damping Factor)
+    # This blends the AI prediction with the current 10-period momentum
+    damped_preds = []
+    # Calculate the current slope (Price change per bar)
+    current_trend_slope = (df_clean['Close'].iloc[-1] - df_clean['Close'].iloc[-10]) / 10
+
+    for i, ai_val in enumerate(aligned_preds):
+        # simple_proj follows the current direction of the price
+        simple_proj = last_live_price + (current_trend_slope * i)
+
+        # 70% Weight on AI Logic, 30% Weight on Current Momentum
+        # This prevents the 'crashing then recovering' U-shape
+        final_val = (ai_val * 0.7) + (simple_proj * 0.3)
+        damped_preds.append(final_val)
+
+    # 6. DYNAMIC TIME DELTA (Skips timeframe visual bugs)
     last_date = df_clean.index[-1]
-
     if len(df_clean) > 1:
-        # Calculate the actual gap between the last two bars (e.g., 15m, 1h, or 1d)
         time_delta = df_clean.index[-1] - df_clean.index[-2]
     else:
         time_delta = pd.Timedelta(days=1)
 
-    # Generate dates based on the detected interval
     future_dates = [last_date + (i * time_delta) for i in range(1, forecast_periods + 1)]
 
-    # 4. Create the prediction DF and Bridge
-    pred_df = pd.DataFrame({'Predicted': future_preds}, index=future_dates)
-    bridge = pd.DataFrame({'Predicted': [df_clean['Close'].iloc[-1]]}, index=[last_date])
+    # 7. Final DataFrame and Bridge
+    pred_df = pd.DataFrame({'Predicted': damped_preds}, index=future_dates)
+    bridge = pd.DataFrame({'Predicted': [last_live_price]}, index=[last_date])
 
     return pd.concat([bridge, pred_df])
 
