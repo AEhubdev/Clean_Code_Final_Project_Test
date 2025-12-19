@@ -28,7 +28,7 @@ CHART_HEIGHT_INDICATOR = 150 # Compact for multi-indicator stacking
 TIMEFRAME_OPTIONS = {
     "15 Minutes": "15m",     # Scalping/Day Trade
     "1 Hour": "1h",          # Intraday Trend
-    "4 Hours": "4h",         # Swing Trade (Highly Recommended for Gold)
     "1 Day": "1d",           # Macro Trend
-    "1 Week": "1wk"          # Long-term Structure
+    "1 Week": "1wk",         # Long-term Structure
+    "1 Month": "1mo",        # Scalping/Day Trade
 }
