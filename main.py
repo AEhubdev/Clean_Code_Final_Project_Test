@@ -8,6 +8,7 @@ styles.apply_custom_styles()
 
 
 def calculate_trend_line(closing_prices):
+    """Calculates a linear regression line for the provided price data."""
     indices = np.arange(len(closing_prices))
     slope, intercept = np.polyfit(indices, closing_prices, 1)
     return slope * indices + intercept
@@ -101,6 +102,9 @@ def render_chart_window(title, chart_type, key_id, default_idx=2):
 
         fig = go.Figure()
 
+        # Determine if this specific chart should show a legend
+        show_chart_legend = True if chart_type == "price" else False
+
         if chart_type == "price":
             _plot_price_with_signals(fig, plot_data)
         elif chart_type == "volume":
@@ -110,100 +114,81 @@ def render_chart_window(title, chart_type, key_id, default_idx=2):
         elif chart_type == "macd":
             _plot_macd(fig, plot_data)
 
-        fig.update_layout(template="plotly_dark", margin=dict(t=5, b=5, l=5, r=5), showlegend=False)
+        fig.update_layout(
+            template="plotly_dark",
+            margin=dict(t=30 if show_chart_legend else 5, b=5, l=5, r=5),
+            showlegend=show_chart_legend
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 
 def _plot_price_with_signals(fig, data):
-    """
-    Plots the main price action including candles, moving averages,
-    Bollinger Bands, and buy/sell markers with full legends.
-    """
     # 1. Trend Line
     trend_vals = calculate_trend_line(data['Close'].values)
-    fig.add_scatter(
-        x=data.index,
-        y=trend_vals,
-        line=dict(color='orange', width=2, dash='dot'),
-        name="Linear Trend"
-    )
+    fig.add_scatter(x=data.index, y=trend_vals, line=dict(color='orange', width=2, dash='dot'), name="Trend Line")
 
     # 2. Moving Averages
-    fig.add_scatter(
-        x=data.index,
-        y=data['MA20'],
-        line=dict(color='#00d4ff', width=1.5),
-        name="MA 20"
-    )
-    fig.add_scatter(
-        x=data.index,
-        y=data['MA50'],
-        line=dict(color='#FFD700', width=1.5, dash='dash'),
-        name="MA 50"
-    )
+    fig.add_scatter(x=data.index, y=data['MA20'], line=dict(color='#00d4ff', width=1.2), name="MA 20")
+    fig.add_scatter(x=data.index, y=data['MA50'], line=dict(color='cyan', width=1.2, dash='dash'), name="MA 50")
 
-    # 3. Bollinger Bands (Upper, Lower, and Shaded Area)
-    fig.add_scatter(
-        x=data.index,
-        y=data['BB_U'],
-        line=dict(color='rgba(255,255,255,0.2)', width=1),
-        name="BB Upper",
-        legendgroup="BB"
-    )
-    fig.add_scatter(
-        x=data.index,
-        y=data['BB_L'],
-        line=dict(color='rgba(255,255,255,0.2)', width=1),
-        fill='tonexty',
-        fillcolor='rgba(128,128,128,0.1)',
-        name="BB Lower",
-        legendgroup="BB"
-    )
+    # 3. Bollinger Bands
+    fig.add_scatter(x=data.index, y=data['BB_U'], line=dict(color='rgba(255,255,255,0.15)', width=1), name="BB Upper")
+    fig.add_scatter(x=data.index, y=data['BB_L'], line=dict(color='rgba(255,255,255,0.15)', width=1),
+                    fill='tonexty', fillcolor='rgba(255,255,255,0.05)', name="BB Lower")
 
     # 4. Candlesticks
-    fig.add_trace(go.Candlestick(
-        x=data.index,
-        open=data['Open'],
-        high=data['High'],
-        low=data['Low'],
-        close=data['Close'],
-        name="Candlesticks"
-    ))
+    fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'],
+                                 close=data['Close'], name="GC=F Price"))
 
-    # 5. Trading Markers (Buy/Sell)
+    # 5. Trading Signal Markers
     price_range = data['High'].max() - data['Low'].min()
     marker_offset = price_range * 0.04
 
     buys = data[data['Buy_Signal']]
     sells = data[data['Sell_Signal']]
 
-    fig.add_scatter(
-        x=buys.index,
-        y=buys['Low'] - marker_offset,
-        mode='markers',
-        marker=dict(symbol='triangle-up', size=14, color='#00FF41'),
-        name="BUY Signal"
-    )
-    fig.add_scatter(
-        x=sells.index,
-        y=sells['High'] + marker_offset,
-        mode='markers',
-        marker=dict(symbol='triangle-down', size=14, color='#FF3131'),
-        name="SELL Signal"
-    )
+    fig.add_scatter(x=buys.index, y=buys['Low'] - marker_offset, mode='markers',
+                    marker=dict(symbol='triangle-up', size=14, color='#00FF41'), name="Buy Signal")
+    fig.add_scatter(x=sells.index, y=sells['High'] + marker_offset, mode='markers',
+                    marker=dict(symbol='triangle-down', size=14, color='#FF3131'), name="Sell Signal")
 
-    # Layout adjustment to enable and position the legend
     fig.update_layout(
         height=config.CHART_HEIGHT_MAIN,
         xaxis_rangeslider_visible=False,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(size=10)
-        )
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
+
+
+def _plot_volume(fig, data):
+    colors = ['#00FF41' if c >= o else '#FF3131' for c, o in zip(data['Close'], data['Open'])]
+    fig.add_bar(x=data.index, y=data['Volume'], marker_color=colors, name="Volume")
+    fig.update_layout(height=config.CHART_HEIGHT_INDICATOR)
+
+
+def _plot_rsi(fig, data):
+    fig.add_scatter(x=data.index, y=data['RSI'], line=dict(color='#BB86FC'), name="RSI")
+    fig.add_hline(y=config.RSI_OVERBOUGHT, line_color="red", line_dash="dash")
+    fig.add_hline(y=config.RSI_OVERSOLD, line_color="green", line_dash="dash")
+    fig.update_layout(height=config.CHART_HEIGHT_INDICATOR, yaxis=dict(range=[0, 100]))
+
+
+def _plot_macd(fig, data):
+    hist_colors = ['#00FF41' if x >= 0 else '#FF3131' for x in data['MACD_Hist']]
+    fig.add_bar(x=data.index, y=data['MACD_Hist'], marker_color=hist_colors, name="MACD Hist")
+    fig.update_layout(height=config.CHART_HEIGHT_INDICATOR)
+
+
+def _render_news_section(news_list):
+    st.divider()
+    st.subheader("📰 Market News & Global Sentiment")
+    if not news_list:
+        st.info("Awaiting latest news updates...")
+        return
+
+    for item in news_list[:8]:
+        with st.container(border=True):
+            st.markdown(f"**{item['title']}**")
+            st.markdown(f"[Read Article]({item['link']})")
+
+
 render_live_overview()
