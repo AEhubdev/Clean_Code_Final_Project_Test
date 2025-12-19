@@ -1,5 +1,5 @@
 TICKER = "GC=F"
-DEFAULT_INTERVAL = "1d"
+DEFAULT_INTERVAL = "1mo"
 
 # Technical Indicator Settings
 RSI_PERIOD = 14

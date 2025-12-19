@@ -68,6 +68,36 @@ def _add_technical_indicators(dataframe):
     return dataframe
 
 
+def generate_ai_prediction(dataframe, forecast_days=30):
+    """Predicts future prices using RSI, MACD, and Bollinger Bands as training features."""
+    # 1. Clean data for training
+    df_clean = dataframe.dropna(subset=['RSI', 'MACD_Hist', 'BB_U', 'BB_L', 'Close']).copy()
+
+    # 2. Define Features (X) and Target (y)
+    # We use these indicators to explain the price behavior
+    features = ['RSI', 'MACD_Hist', 'BB_U', 'BB_L']
+    X = df_clean[features].values
+    y = df_clean['Close'].values
+
+    # 3. Fit Multi-Variable Model
+    model = LinearRegression()
+    model.fit(X, y)
+
+    # 4. Extrapolate Future Inputs
+    # For prediction, we use the most recent indicator states to project forward
+    # This assumes the 'momentum' of the indicators continues into the projection
+    recent_features = df_clean[features].tail(forecast_days).values
+    if len(recent_features) < forecast_days:
+        recent_features = np.tile(df_clean[features].iloc[-1].values, (forecast_days, 1))
+
+    future_preds = model.predict(recent_features)
+
+    # 5. Build Future Index
+    last_date = df_clean.index[-1]
+    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=forecast_days)
+
+    return pd.DataFrame({'Predicted': future_preds}, index=future_dates)
+
 def _generate_trading_signals(dataframe):
     buy_condition = (dataframe['RSI'] < config.RSI_BUY_THRESHOLD) & (dataframe['MACD_Hist'] > 0)
     sell_condition = (dataframe['RSI'] > config.RSI_SELL_THRESHOLD) & (dataframe['MACD_Hist'] < 0)

@@ -41,7 +41,7 @@ def render_live_overview():
     left_pane, right_pane = st.columns([0.72, 0.28])
 
     with left_pane:
-        render_chart_window("PRICE ACTION", "price", "p1_daily", default_idx=2)
+        render_chart_window("PRICE ACTION & AI FORECAST", "price", "p1_daily", default_idx=2)
         render_chart_window("VOLUME", "volume", "v1_vol", default_idx=2)
         render_chart_window("RSI", "rsi", "r1_rsi", default_idx=2)
         render_chart_window("MACD", "macd", "m1_macd", default_idx=2)
@@ -123,6 +123,12 @@ def render_chart_window(title, chart_type, key_id, default_idx=2):
 
 
 def _plot_price_with_signals(fig, data):
+    # --- 0. AI PREDICTION ALGORITHM (RSI/MACD/BB BASED) ---
+    predict_df = data_engine.generate_ai_prediction(data)
+    fig.add_scatter(x=predict_df.index, y=predict_df['Predicted'],
+                    line=dict(color='#FFD700', width=3, dash='dashdot'),
+                    name="AI Next-Month Forecast")
+
     # 1. Trend Line
     trend_vals = calculate_trend_line(data['Close'].values)
     fig.add_scatter(x=data.index, y=trend_vals, line=dict(color='orange', width=2, dash='dot'), name="Trend Line")
