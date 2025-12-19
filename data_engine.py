@@ -81,7 +81,7 @@ def _calculate_rsi(price_series: pd.Series) -> pd.Series:
     price_delta = price_series.diff()
 
     average_gain = price_delta.where(price_delta > 0, 0).rolling(window=config.RSI_PERIOD).mean()
-    average_loss = (-price_delta.where(price_delta <, 0)).rolling(window=config.RSI_PERIOD).mean()
+    average_loss = (-price_delta.where(price_delta < 0, 0)).rolling(window=config.RSI_PERIOD).mean()
 
     relative_strength = average_gain / (average_loss + 1e-10)
     rsi = 100 - (100 / (1 + relative_strength))
@@ -124,10 +124,10 @@ def generate_ai_prediction(dataframe: pd.DataFrame, forecast_periods: int = 30) 
         return pd.DataFrame()
 
     # Train model and generate predictions
-    predictions = _train_and_predict(features_data, forecast_periods)
+    raw_predictions = _train_and_predict(features_data, forecast_periods)
 
     # Apply corrections to predictions
-    corrected_predictions = _correct_predictions(predictions, features_data)
+    corrected_predictions = _correct_predictions(raw_predictions, features_data)
 
     # Create prediction dataframe with dates
     return _create_prediction_dataframe(corrected_predictions, features_data)
