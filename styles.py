@@ -49,32 +49,23 @@ def apply_custom_styles() -> None:
     """, unsafe_allow_html=True)
 
 
-def colored_metric(
-        column,
-        label: str,
-        value_text: str,
-        delta_value: float,
-        is_volume: bool = False
-) -> None:
+def colored_metric(col, label, val_text, delta_val, is_vol=False) -> None:
     """Display a colored metric with appropriate formatting."""
 
-    if is_volume:
-        color = "#FFA500"
-    else:
-        color = "#00FF41" if delta_value > 0 else "#FF3131"
+    color = "#FFA500" if is_vol else ("#00FF41" if delta_val > 0 else "#FF3131")
 
-    column.markdown(f"**{label}**")
-    column.markdown(
+    col.markdown(f"**{label}**")
+    col.markdown(
         f"""<h2 style='
             color:{color}; 
             margin-top:-15px; 
             font-weight:bold;
-        '>{value_text}</h2>""",
+        '>{val_text}</h2>""",
         unsafe_allow_html=True
     )
 
 
-def display_signal(label: str, value: str, status: str, color: str) -> None:
+def display_signal(label, value, status, color) -> None:
     """Display a trading signal with consistent styling."""
 
     st.markdown(f"""
