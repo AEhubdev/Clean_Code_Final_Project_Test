@@ -63,9 +63,12 @@ def _add_technical_indicators(dataframe):
     return dataframe
 
 
-def generate_ai_prediction(dataframe, forecast_days=30):
+def generate_ai_prediction(dataframe, forecast_periods=30):
     """Predicts future prices using RSI, MACD, and Bollinger Bands as training features."""
-    df_clean = dataframe.dropna(subset=['RSI', 'MACD_Hist', 'BB_U', 'BB_L', 'Close']).copy()
+    # 1. Scope to the last 150 bars of the CURRENT timeframe to make it timeframe-aware
+    df_window = dataframe.tail(150).copy()
+
+    df_clean = df_window.dropna(subset=['RSI', 'MACD_Hist', 'BB_U', 'BB_L', 'Close']).copy()
     if df_clean.empty: return pd.DataFrame()
 
     features = ['RSI', 'MACD_Hist', 'BB_U', 'BB_L']
@@ -75,21 +78,30 @@ def generate_ai_prediction(dataframe, forecast_days=30):
     model = LinearRegression()
     model.fit(X, y)
 
-    # Use the most recent feature set to project
-    recent_features = df_clean[features].tail(forecast_days).values
-    if len(recent_features) < forecast_days:
-        recent_features = np.tile(df_clean[features].iloc[-1].values, (forecast_days, 1))
+    # 2. Project using the most recent bar's characteristics
+    recent_features = df_clean[features].tail(forecast_periods).values
+    if len(recent_features) < forecast_periods:
+        recent_features = np.tile(df_clean[features].iloc[-1].values, (forecast_periods, 1))
 
     future_preds = model.predict(recent_features)
-    last_date = df_clean.index[-1]
-    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=forecast_days)
 
-    # Create the prediction DF and add a 'Bridge' point to avoid gaps in the chart
+    # 3. DYNAMIC TIME DELTA: This fixes the timeframe visual bug
+    last_date = df_clean.index[-1]
+
+    if len(df_clean) > 1:
+        # Calculate the actual gap between the last two bars (e.g., 15m, 1h, or 1d)
+        time_delta = df_clean.index[-1] - df_clean.index[-2]
+    else:
+        time_delta = pd.Timedelta(days=1)
+
+    # Generate dates based on the detected interval
+    future_dates = [last_date + (i * time_delta) for i in range(1, forecast_periods + 1)]
+
+    # 4. Create the prediction DF and Bridge
     pred_df = pd.DataFrame({'Predicted': future_preds}, index=future_dates)
     bridge = pd.DataFrame({'Predicted': [df_clean['Close'].iloc[-1]]}, index=[last_date])
 
     return pd.concat([bridge, pred_df])
-
 
 def _generate_trading_signals(dataframe):
     buy_cond = (dataframe['RSI'] < config.RSI_BUY_THRESHOLD) & (dataframe['MACD_Hist'] > 0)
