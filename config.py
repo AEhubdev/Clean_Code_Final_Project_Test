@@ -1,34 +1,31 @@
-# --- CORE ASSET SETTINGS ---
-TICKER = "GC=F"              # Gold Futures (Standard)
-DEFAULT_INTERVAL = "1d"      # Daily is the standard 'Anchor' timeframe
+# ================================
+# GOLD TRADING SYSTEM CONFIGURATION
+# ================================
 
-# --- RSI (Relative Strength Index) ---
-# Standards: 14 periods is the universal benchmark.
-RSI_PERIOD = 14
-RSI_OVERBOUGHT = 70          # Statistical extreme
-RSI_OVERSOLD = 30           # Statistical extreme
+# --- ASSET & TIMEFRAME ---
+TICKER = "GC=F"                    # Gold Futures
+DEFAULT_INTERVAL = "1d"           # Primary analysis timeframe
 
-# Professional Signal Logic:
-# In gold, a cross above 50/60 confirms momentum.
-# 40/60 are 'Regime' levels used by pro desk traders.
-RSI_BUY_THRESHOLD = 55       # Confirming bullish momentum (Standard: 50-60)
-RSI_SELL_THRESHOLD = 45      # Confirming bearish momentum (Standard: 40-50)
+# --- RSI SETTINGS ---
+RSI_PERIOD = 14                    # Standard benchmark period
+RSI_OVERBOUGHT = 70                # Overbought threshold
+RSI_OVERSOLD = 30                  # Oversold threshold
+RSI_BUY_THRESHOLD = 55             # Bullish momentum confirmation
+RSI_SELL_THRESHOLD = 45            # Bearish momentum confirmation
 
-# --- BOLLINGER BANDS (BB) ---
-# Standard: 20-period SMA with 2 Standard Deviations (95% of price action)
-BB_PERIOD = 20
-BB_STD_DEV = 2
+# --- BOLLINGER BANDS SETTINGS ---
+BB_PERIOD = 20                     # Moving average period
+BB_STD_DEV = 2                     # Standard deviation multiplier
 
-# --- CHART STYLES ---
-CHART_HEIGHT_MAIN = 500      # Slightly taller for better candle visibility
-CHART_HEIGHT_INDICATOR = 150 # Compact for multi-indicator stacking
+# --- VISUALIZATION ---
+CHART_HEIGHT_MAIN = 500            # Main chart height
+CHART_HEIGHT_INDICATOR = 150       # Indicator panel height
 
 # --- TIMEFRAME OPTIONS ---
-# Standard intervals used by institutional terminals (Bloomberg/Reuters)
 TIMEFRAME_OPTIONS = {
-    "15 Minutes": "15m",     # Scalping/Day Trade
-    "1 Hour": "1h",          # Intraday Trend
-    "1 Day": "1d",           # Macro Trend
-    "1 Week": "1wk",         # Long-term Structure
-    "1 Month": "1mo",        # Scalping/Day Trade
+    "15 Minutes": "15m",           # Short-term analysis
+    "1 Hour": "1h",                # Intraday trends
+    "1 Day": "1d",                 # Primary analysis
+    "1 Week": "1wk",               # Longer-term structure
+    "1 Month": "1mo",              # Macro trends
 }
