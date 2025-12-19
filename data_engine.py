@@ -4,7 +4,7 @@ import numpy as np
 import streamlit as st
 import config
 from datetime import datetime
-
+from sklearn.linear_model import LinearRegression
 
 @st.cache_data(ttl=60)
 def get_gold_market_data(timeframe_name="1 Day"):
